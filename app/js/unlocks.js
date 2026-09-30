@@ -3,6 +3,7 @@
 // reward of one trophy (never random), so what is unlocked follows from the
 // trophies earned; only the player's choice per category is saved.
 import { TROPHY } from './trophies.js';
+import { coreCall } from './math-core.js';
 
 export const CATS = [
   { key: 'bg', name: 'Backgrounds' },
@@ -88,21 +89,16 @@ addItems([
   { id: 'finale:rocket', cat: 'finale', name: 'Rocket', trophy: 'extras-20' },
 ]);
 
-export const isUnlocked = (it, got = {}) => !!(it && (it.base || (it.trophy && got[it.trophy])));
-export const unlockedIn = (cat, got) => ITEMS.filter((it) => it.cat === cat && isUnlocked(it, got));
-export const defaultEquip = () => Object.fromEntries(CATS.map((c) => [c.key, 'auto']));
-
-// The look for one play: fixed choices stay; "auto" picks among the unlocked
-// ones so every play can look and sound a little different.
-export function pickLook(equip = {}, got = {}, rng = Math.random) {
-  const look = {};
-  for (const { key } of CATS) {
-    const want = equip[key];
-    const own = unlockedIn(key, got);
-    if (want && want !== 'auto' && own.some((it) => it.id === want)) look[key] = want;
-    else look[key] = own[Math.floor(rng() * own.length)].id;
-  }
-  return look;
+// Cosmetic eligibility and random selection are non-UI rules in Rust.
+export const isUnlocked = (item,got={}) => coreCall('isItemUnlocked',{item,got});
+export const unlockedIn = (cat,got) => coreCall('unlockedIn',{cat,got,items:ITEMS}).map(item=>ITEM[item.id]);
+export const defaultEquip = () => coreCall('defaultEquip',{cats:CATS});
+export function pickLook(equip={},got={},rng=Math.random) {
+  const args={equip,got,items:ITEMS,cats:CATS};
+  // Ask how many random draws are needed before drawing, preserving generic
+  // caller-owned RNG streams even when some categories have fixed choices.
+  const {consumed}=coreCall('pickLook',{...args,random:[]});
+  return coreCall('pickLook',{...args,random:Array.from({length:consumed},()=>rng())}).result;
 }
-// The part after "cat:" (what the show modules switch on).
-export const variant = (id) => (id ? id.split(':')[1] : 'classic');
+// Asset-name suffix decoding is presentation, kept local to animation frames.
+export const variant = (id) => id ? id.split(':')[1] : 'classic';

@@ -1,0 +1,37 @@
+[
+  {
+    "name": "reward states 0-24",
+    "assertions": 2475,
+    "hash": "ee76a40155d06fe56614df494080300dee69c9627e16590bb79fc7f280fc50e7"
+  },
+  {
+    "name": "reward states 25-49",
+    "assertions": 2475,
+    "hash": "a0a0f3d5dc0414b677df79a224a40c1453acfc60d9c325a660d067253ea6ec65"
+  },
+  {
+    "name": "reward states 50-74",
+    "assertions": 2475,
+    "hash": "d365abe81baab8aa334cbedb8b9ceec4d3f554a8743c330261779bd80ee95148"
+  },
+  {
+    "name": "reward states 75-99",
+    "assertions": 2475,
+    "hash": "4d7c07d9ca9a142171300c0b14a92b452250fc133dd37e6514e9ec2f46bcb147"
+  },
+  {
+    "name": "reward states 100-124",
+    "assertions": 2475,
+    "hash": "466a57821f21887bacfb71a7162d9c0ec8dc43f3d5f6f3872a3b42b94183609e"
+  },
+  {
+    "name": "reward states 125-149",
+    "assertions": 2475,
+    "hash": "18ffd4df42f4bc77165f30494b88bb0e799fe16e620b52c52af8fcde6d7cd3b0"
+  },
+  {
+    "name": "defaults, floor boundaries, overrides and metric lookup",
+    "assertions": 12,
+    "hash": "11332539215fd4552d38d161e88a794955e82bdd7fe6cd011bbb0061e15223df"
+  }
+]

@@ -5,7 +5,7 @@
 // random, conditions are always shown (except a few secrets), and a trophy,
 // once earned, is kept.
 import { SKILLS, LANES } from './skills.js';
-import { isUnlocked, isMastered, starsOf } from './session.js';
+import { coreCall, syncInto } from './math-core.js';
 
 export const CATS = ['Keep going', 'Big totals', 'Skills', 'Growth', 'Extra Round', 'Combos', 'Accuracy', 'Dopa', 'Review', 'Grades', 'Collection', 'Secrets'];
 
@@ -88,56 +88,21 @@ SERIES_DEFS.forEach(addSeries);
   { key: 'catComplete', cat: 'Collection', title: 'Complete collections', metric: 'catComplete', steps: [1, 3, 5, 8], name: (v) => `${count(v, 'collection')} complete`, desc: (v) => `Unlock every item in ${count(v, 'collection')}` },
 ].forEach(addSeries);
 
-// Numbers every trophy is measured against, from the saved state.
-// snap: { stats, prog, bestStreak, stickers, crowns, ...extra metrics }
+// Rust evaluates all thresholds in one call. Copy only fields used by the
+// rules; large saved problem grids and timing histories stay in the browser.
 export function trophyMetrics(snap) {
-  const s = snap.stats || {};
-  const prog = snap.prog || { skills: {} };
-  const m = {
-    bestStreak: snap.bestStreak || 0, days: s.days || 0, stickers: snap.stickers || 0, crowns: snap.crowns || 0,
-    problems: s.problems || 0, cells: s.cells || 0, plays: s.plays || 0, minutes: Math.floor((s.playMs || 0) / 60000),
-    unlocked: SKILLS.filter((x) => isUnlocked(prog, x.id)).length, mastered: SKILLS.filter((x) => isMastered(prog, x.id)).length,
-    extras: s.extras || 0, extraBest: s.extraBest || 0, extraSolved: s.extraSolved || 0, maxCombo: s.maxCombo || 0,
-    perfects: s.perfects || 0, firstTry: s.firstTry || 0, bestDopaL: Math.floor((s.bestDopaL || 0) + 1e-9), reviewSolved: s.reviewSolved || 0,
-  };
-  const stars = Object.fromEntries(SKILLS.map((x) => [x.id, starsOf(prog, x.id)]));
-  m.starsTotal = Object.values(stars).reduce((a, b) => a + b, 0);
-  m.star5 = Object.values(stars).filter((n) => n >= 5).length;
-  m.polished = s.polished || 0; m.capsules = s.capsules || 0; m.capsuleFaster = s.capsuleFaster || 0; m.grew = s.grew || 0;
-  for (let g = 1; g <= 6; g++) {
-    m[`gradeStar3${g}`] = SKILLS.filter((x) => x.grade === g).every((x) => stars[x.id] >= 3) ? 1 : 0;
-    m[`gradeDone${g}`] = SKILLS.filter((x) => x.grade === g).every((x) => isMastered(prog, x.id)) ? 1 : 0;
-    m[`gradePlays${g}`] = (s.grades || {})[g] || 0;
-  }
-  LANES.forEach((_, i) => { m[`laneDone${i}`] = SKILLS.filter((x) => x.lane === i).every((x) => isMastered(prog, x.id)) ? 1 : 0; });
-  for (const [k, v] of Object.entries(s.flags || {})) if (v) m[`flag:${k}`] = 1;
-  const modes = s.modes || {};
-  m.allModes = ['level', 'grade', 'practice', 'review'].every((k) => modes[k]) ? 1 : 0;
-  Object.assign(m, snap.extra || {});
-  return m;
+  const skills=Object.fromEntries(Object.entries(snap.prog?.skills||{}).map(([id,r])=>[id,{mastered:r.mastered,stars:r.stars}]));
+  return coreCall('trophyMetrics',{snap:{...snap,prog:{skills}}});
 }
-export const valueOf = (m, metric) => m[metric] || 0;
-
-// Earn every trophy whose condition is met. Returns the new ones (in list order).
-// `state` is the saved { got: { id: time } }; the first call earns what the
-// existing records already reach and marks them as a batch.
-export function evaluate(state, metrics, at = Date.now()) {
-  state.got = state.got || {};
-  const fresh = [];
-  for (const t of TROPHIES) {
-    if (state.got[t.id]) continue;
-    if (valueOf(metrics, t.metric) >= t.need) { state.got[t.id] = at; fresh.push(t); }
-  }
-  if (!state.init) { state.init = true; state.batch = fresh.map((t) => t.id); return []; }
-  return fresh;
+export const valueOf = (metrics,metric) => coreCall('trophyValueOf',{metrics,metric});
+const rules = () => TROPHIES.map(({id,metric,need})=>({id,metric,need}));
+export function evaluate(state,metrics,at=Date.now()) {
+  const out=coreCall('evaluateTrophies',{state,metrics,at,trophies:rules()});
+  syncInto(state,out.state);return out.result.map(t=>TROPHY[t.id]);
 }
-
-export const earnedCount = (state) => TROPHIES.filter((t) => state.got && state.got[t.id]).length;
-
-// Progress of one series for the list screen.
-export function seriesView(series, state, metrics) {
-  const got = series.items.filter((t) => state.got && state.got[t.id]);
-  const next = series.items.find((t) => !(state.got && state.got[t.id]));
-  const top = got[got.length - 1] || null;
-  return { series, got, next, top, value: next ? valueOf(metrics, next.metric) : null };
+export const earnedCount = (state) => coreCall('earnedCount',{state,trophies:TROPHIES.map(({id})=>({id}))});
+export function seriesView(series,state,metrics) {
+  const out=coreCall('seriesView',{series,state,metrics});
+  // Restore original catalogue identities after serialization.
+  return {...out,series,got:out.got.map(t=>TROPHY[t.id]),next:out.next?TROPHY[out.next.id]:undefined,top:out.top?TROPHY[out.top.id]:null};
 }

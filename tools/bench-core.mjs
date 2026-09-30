@@ -7,7 +7,7 @@ import os from 'node:os';
 import {initCore,checkDigit,extraTotal,basicDopaL,coreCall} from '../app/js/math-core.js';
 import {makeRng,makeProblem} from '../app/js/problems.js';
 import {SKILLS} from '../app/js/skills.js';
-const bytes=await readFile(new URL('../app/wasm/dopa_core.wasm',import.meta.url));
+const bytes=await readFile(process.env.DOPA_WASM_PATH || new URL('../app/wasm/dopa_core.wasm',import.meta.url));
 const start=performance.now();await initCore(bytes);const initMs=performance.now()-start;
 const source=(await readFile(new URL('../tests/fixtures/original-problems.js.txt',import.meta.url),'utf8'))
   .replace("'./skills.js'",JSON.stringify(new URL('../app/js/skills.js',import.meta.url).href));

@@ -81,6 +81,7 @@ export const extraProblemGain = (k) => engine().extra_problem_gain(k);
 export const comboMult = (combo) => engine().combo_mult(combo);
 export const addDopa = (level, base, combo) => engine().add_dopa(level, base, combo);
 export const comboWindowMs = (grade = 3, first = false) => engine().combo_window(grade || 3, Number(first));
+export const baseMs = (grade,cells) => engine().base_ms(grade,cells);
 export const comboMilestone = (combo) => !!engine().combo_milestone(combo);
 
 // Rust returns immutable JSON; reconcile it into the original JS objects so
@@ -101,4 +102,11 @@ export function syncInto(target, source) {
     }
   }
   return target;
+}
+export const columnModel = (kind,a,b,pa=0,pb=0) => coreCall('columnModel',{kind,a,b,pa,pb});
+export function generateLegacyRecipe(template,rng,fixed) {
+  const seed=typeof rng.getState==='function'?rng.getState():Math.floor(rng()*4294967296)>>>0;
+  const out=coreCall('generateLegacy',{template,seed,fixed});
+  if(typeof rng.setState==='function') rng.setState(out.seed);
+  return out.recipe;
 }

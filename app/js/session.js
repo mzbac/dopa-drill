@@ -3,7 +3,8 @@ import { SKILLS, SKILL, DEPTH, LANES } from './skills.js';
 import { makeProblem, signature } from './problems.js';
 import { comboWindowMs } from './scoring.js';
 import { daysBetween } from './growth.js';
-import { coreCall, syncInto } from './math-core.js';
+import { coreCall, syncInto, baseMs } from './math-core.js';
+export { baseMs };
 const LANES_N = LANES.length;
 // Static curriculum order also feeds visual tree layout before WASM is ready.
 export const ORDER = SKILLS.slice().sort((a,b) => DEPTH[a.id]-DEPTH[b.id] || a.grade-b.grade || SKILLS.indexOf(a)-SKILLS.indexOf(b)).map(s=>s.id);
@@ -65,7 +66,6 @@ export const stateOf = (prog,id) => coreCall('stateOf',{prog:view(prog,['mastere
 export const masteryRatio = (prog,id) => coreCall('masteryRatio',{prog:view(prog,['mastered','hist'],[id]),id});
 export const rustyOf = (prog,now=Date.now()) => coreCall('rustyOf',{prog:view(prog,['mastered','lastOk','grantedAt','masteredAt']),now});
 export const starsOf = (prog,id) => coreCall('starsOf',{prog:view(prog,['mastered','stars'],[id]),id});
-export const baseMs = (grade,cells) => coreCall('baseMs',{grade,cells});
 export const frontier = (prog) => coreCall('frontier',{prog:view(prog,['mastered'])});
 export const dependents = (id) => coreCall('dependents',{id});
 export const relockTargets = (prog,id) => coreCall('relockTargets',{prog,id});
@@ -92,11 +92,10 @@ export function gradePlan(grade,N,rng) {
 }
 export function levelPlan(prog,N,rng,now=Date.now()) {
   if (!prog.placed) return placementPlan(prog,N);
-  // Supply an upper bound; Rust reports how many draws it used, so seeded
-  // streams keep the same position as the original adaptive planner.
-  const state = typeof rng.getState === 'function' ? rng.getState() : null;
-  const out=coreCall('levelPlan',{prog,n:N,random:Array.from({length:N},()=>rng()),now});
-  if (state != null && typeof out.randomUsed === 'number') { rng.setState(state); for(let i=0;i<out.randomUsed;i++) rng(); }
+  const planProg={...view(prog,['mastered','lastOk','grantedAt','masteredAt']),placed:prog.placed};
+  const args={prog:planProg,n:N,random:[],now};
+  const probe=coreCall('levelPlan',args);
+  const out=probe.randomUsed ? coreCall('levelPlan',{...args,random:Array.from({length:probe.randomUsed},()=>rng())}) : probe;
   return {mode:'level',basic:out.basic,extra:(k)=>out.extra[k%out.extra.length]};
 }
 export function placementPlan(prog,N) {

@@ -1,6 +1,6 @@
 const status = document.querySelector('#offline-status');
 if ('serviceWorker' in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), { scope: '../' })
+  navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), { scope: new URL('../', import.meta.url).pathname })
     .then(async (registration) => {
       const showUpdate = () => { status.textContent = 'An update is ready. Close all game windows and reopen to update.'; };
       const observe = (worker) => {

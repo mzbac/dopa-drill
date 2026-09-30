@@ -87,8 +87,17 @@ fn horizontal(tokens: Value, title: &str, text: String, answer: String, help: St
     json!({"kind":"h","tokens":tokens,"meta":{"title":title,"text":text,"answer":answer,"help":help}})
 }
 fn column(kind: &str, a: i64, b: i64, pa: i64, pb: i64) -> Value {
-    json!({"kind":kind,"a":a,"b":b,"pa":pa,"pb":pb})
+    let mut out = json!({"kind":kind,"a":a,"b":b,"pa":pa,"pb":pb});
+    out["model"] = crate::columns::model(kind, a, b, pa as usize, pb as usize)
+        .expect("valid generated column operands");
+    out
 }
+fn generated(recipe: Value, seed: u32) -> Value {
+    let mut out = json!({"seed":seed});
+    out["recipe"] = recipe;
+    out
+}
+
 fn fraction(n: i64, d: i64, mixed: bool) -> (Value, String) {
     let (n, d) = reduce(n, d);
     if mixed && n > d {
@@ -123,7 +132,7 @@ pub fn generate(id: &str, seed: u32) -> Result<Value, String> {
     } else {
         generate_inner(name, params, &mut rng)?
     };
-    Ok(json!({"recipe":recipe,"seed":rng.state}))
+    Ok(generated(recipe, rng.state))
 }
 
 fn generate_inner(name: &str, p: &Value, r: &mut Rng) -> Result<Value, String> {
@@ -818,6 +827,86 @@ fn decimal_problem(p: &Value, r: &mut Rng) -> Result<Value, String> {
         return Ok(column("sub", a, b, pa, pb));
     }
     Err("generation limit reached: vdec".into())
+}
+
+pub fn generate_legacy(args: &Value) -> Result<Value, String> {
+    let mut r = Rng {
+        state: args["seed"].as_u64().unwrap_or(0) as u32,
+    };
+    let fixed = &args["fixed"];
+    if fixed.is_object() {
+        let kind = match fixed["kind"].as_str() {
+            Some("add") => "add",
+            Some("sub") => "sub",
+            _ => "div",
+        };
+        let a = n(fixed, "a");
+        let b = n(fixed, "b");
+        crate::columns::model(kind, a, b, 0, 0)?;
+        return Ok(generated(column(kind, a, b, 0, 0), r.state));
+    }
+    let template = args["template"].as_str().unwrap_or("");
+    for _ in 0..500 {
+        let candidate = match template {
+            "add2" => {
+                let a = r.int(12, 68);
+                let b = r.int(12, 89 - a);
+                (a + b < 100
+                    && count_carries(a as u32, b as u32) == 1
+                    && a % 10 != 0
+                    && b % 10 != 0)
+                    .then_some(("add", a, b))
+            }
+            "add3" => {
+                let a = r.int(120, 780);
+                let b = r.int(120, 999 - a);
+                (a + b < 1000 && count_carries(a as u32, b as u32) >= 2).then_some(("add", a, b))
+            }
+            "add4" => {
+                let a = r.int(1200, 7800);
+                let b = r.int(1200, 9999 - a);
+                (a + b < 10000 && count_carries(a as u32, b as u32) >= 2).then_some(("add", a, b))
+            }
+            "sub2" => {
+                let a = r.int(31, 98);
+                let b = r.int(12, a - 10);
+                (count_borrows(a as u32, b as u32) == 1 && a - b >= 10).then_some(("sub", a, b))
+            }
+            "sub3" => {
+                let a = r.int(120, 980);
+                let b = r.int(25, a - 20);
+                (count_borrows(a as u32, b as u32) >= 1 && a - b >= 10).then_some(("sub", a, b))
+            }
+            "sub3z" => {
+                let a = r.int(1, 9) * 100 + r.int(1, 9);
+                let b = r.int(102, a - 50);
+                (a > 150 && count_borrows(a as u32, b as u32) >= 2 && (b / 10) % 10 > 0)
+                    .then_some(("sub", a, b))
+            }
+            "sub4" => {
+                let a = r.int(2000, 9800);
+                let b = r.int(300, a - 100);
+                (count_borrows(a as u32, b as u32) >= 2 && a - b >= 100).then_some(("sub", a, b))
+            }
+            "div2" => {
+                let d = r.int(2, 4);
+                let q = r.int(12, 49);
+                let a = q * d;
+                (a < 100 && a / 10 >= d && q % 10 != 0).then_some(("div", a, d))
+            }
+            "div3" => {
+                let d = r.int(3, 9);
+                let q = r.int(12, 99);
+                let a = q * d;
+                ((100..1000).contains(&a) && a / 100 < d && q % 10 != 0).then_some(("div", a, d))
+            }
+            _ => return Err(format!("unknown template {template}")),
+        };
+        if let Some((kind, a, b)) = candidate {
+            return Ok(generated(column(kind, a, b, 0, 0), r.state));
+        }
+    }
+    Err(format!("failed to generate {template}"))
 }
 
 #[cfg(test)]

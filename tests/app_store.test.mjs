@@ -200,3 +200,13 @@ test('guideSeen remains usable for this visit when storage cannot be written', (
     assert.equal(store.hasSeenGuide(), false);
   } finally { delete globalThis.localStorage; store.reset(null); }
 });
+
+
+test('invalid saved settings are normalized to safe playable values', () => {
+  store.reset(null);
+  const settings = store.load(memory({ 'dopa-drill:v1': JSON.stringify({version:1,settings:{count:999,sound:'on',volume:99,motion:-10}}) })).settings;
+  assert.deepEqual(settings,{count:10,sound:true,volume:1,motion:0});
+  assert.equal(store.save(null),false);
+  assert.equal(store.saveStatus(),false);
+  store.reset(null);
+});

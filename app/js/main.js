@@ -1,4 +1,4 @@
-import { initCore, checkDigit, getCoreStatus } from './math-core.js';
+import { initCore, checkDigit, getCoreStatus, coreCall } from './math-core.js';
 // Game flow, input, scoring, and the "director" that turns every event into
 // escalating visuals and sound.
 import { startClock, onFrame, wait, tween, clamp, lerp, rand, pick, chance, centerOf, params,
@@ -1591,6 +1591,7 @@ function setVolume(v, { persist = true } = {}) {
   if (persist) store.updateSettings({ volume: v });
 }
 function setCount(n, { persist = true } = {}) {
+  if (![6, 10, 14].includes(n)) n = 10;
   $$('.pick button').forEach((x) => x.setAttribute('aria-checked', String(Number(x.dataset.count) === n)));
   if (persist) store.updateSettings({ count: n });
 }
@@ -2010,20 +2011,15 @@ function claimBonus() {
 const trophyState = () => { const st = store.load(); if (!st.trophies) st.trophies = {}; return st.trophies; };
 function trophySnap() {
   const bonus = store.bonusState();
-  const stickers = Object.values(bonus.stickers || {});
-  return { stats: stats(), prog: progress(), bestStreak: store.bestStreak(), stickers: bonus.total || 0, crowns: stickers.filter((x) => x === 'crown').length, extra: trophyExtra() };
+  return { stats: stats(), prog: progress(), bestStreak: store.bestStreak(), stickers: bonus.total || 0, crowns: coreCall('countCrowns', { stickers: bonus.stickers || {} }), extra: trophyExtra() };
 }
 // Metrics that later features add (quests, hammer, collection), id045.
 function trophyExtra() {
-  const days = Object.keys((store.load().quests || {}).doneDays || {}).sort();
-  let run = 0; let best = 0; let prev = null;
-  for (const d of days) { run = prev && growth.daysBetween(prev, d) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = d; }
-  const got = trophyState().got || {};
-  const own = ul.ITEMS.filter((it) => ul.isUnlocked(it, got));
-  return {
-    questDays: days.length, questRun: best, hammerUsed: store.items().used || 0,
-    itemsOwned: own.length, catComplete: ul.CATS.filter((c) => ul.ITEMS.filter((it) => it.cat === c.key).every((it) => ul.isUnlocked(it, got))).length,
-  };
+  return coreCall('trophyExtraMetrics', {
+    doneDays: (store.load().quests || {}).doneDays || {},
+    items: ul.ITEMS, cats: ul.CATS, got: trophyState().got || {},
+    hammerUsed: store.items().used || 0,
+  });
 }
 S.trophyQueue = [];
 function checkTrophies() {
@@ -2615,6 +2611,9 @@ addEventListener('resize', () => requestAnimationFrame(() => {
   onFrame((dt, t) => { if (S.screen === 'title' && !S.reduced) burst.style.setProperty('--spin', (t / 1000 * 10 * (0.3 + S.motion)) % 360); });
 })();
 
+document.addEventListener('dopa-storage', (event) => {
+  $('#storage-warning').hidden = event.detail !== false;
+});
 const saved = store.settings();
 const prefersReduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 setCount(params.has('count') ? Number(params.get('count')) : saved.count, { persist: false });

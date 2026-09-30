@@ -1,3 +1,4 @@
+import { coreCall, syncInto } from './math-core.js';
 // Local-only persistence (localStorage). Nothing is sent to a server.
 // Every read tolerates missing, blocked, or corrupted storage.
 
@@ -18,6 +19,8 @@ function backend() {
 }
 
 let cache = null;
+let lastSaveSucceeded = null;
+export const saveStatus = () => lastSaveSucceeded;
 
 export function load(storage = backend()) {
   if (cache) return cache;
@@ -28,7 +31,13 @@ export function load(storage = backend()) {
     try {
       const data = JSON.parse(raw);
       if (data && data.version === VERSION) {
-        base.settings = { ...base.settings, ...(data.settings || {}) };
+        const settings = data.settings && typeof data.settings === 'object' ? data.settings : {};
+        base.settings = {
+          count: [6, 10, 14].includes(settings.count) ? settings.count : 10,
+          sound: typeof settings.sound === 'boolean' ? settings.sound : true,
+          volume: Number.isFinite(settings.volume) ? Math.max(0, Math.min(1, settings.volume)) : 0.8,
+          motion: settings.motion === null || !Number.isFinite(settings.motion) ? null : Math.max(0, Math.min(1, settings.motion)),
+        };
         base.history = Array.isArray(data.history) ? data.history : [];
         base.guideSeen = data.guideSeen === true;
         for (const [k, v] of Object.entries(data)) if (!(k in base)) base[k] = v;
@@ -40,8 +49,13 @@ export function load(storage = backend()) {
 }
 
 export function save(storage = backend()) {
-  if (!cache || !storage) return false;
-  try { storage.setItem(KEY, JSON.stringify(cache)); return true; } catch { return false; }
+  let saved = false;
+  if (cache && storage) {
+    try { storage.setItem(KEY, JSON.stringify(cache)); saved = true; } catch { /* Keep this visit playable. */ }
+  }
+  lastSaveSucceeded = saved;
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('dopa-storage', { detail: saved }));
+  return saved;
 }
 
 export function settings() { return load().settings; }
@@ -78,102 +92,43 @@ export function updateRecord(id, patch) {
 
 // Map of day -> { best, plays, entries } for one month (month: 0-11).
 export function monthSummary(year, month) {
-  const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
-  const out = {};
-  for (const h of load().history) {
-    if (!h.day || !h.day.startsWith(prefix)) continue;
-    const d = out[h.day] || (out[h.day] = { best: 0, plays: 0, entries: [] });
-    d.best = Math.max(d.best, h.score || 0);
-    d.plays += 1;
-    d.entries.push(h);
-  }
-  return out;
+  return coreCall('storeMonthSummary',{state:{history:load().history},year,month});
 }
 
 export function playedDays() { return new Set(load().history.map((h) => h.day)); }
 // Days made "no count" with the hammer (id034): they keep a streak going
 // but are not counted as played.
 export const nocountDays = () => load().nocount || {};
-const dayBefore = (d, n = 1) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - n);
-
-// Consecutive days played, counting back from today (or yesterday if today is empty).
-export function streak(today = new Date()) {
-  const days = playedDays();
-  const nc = nocountDays();
-  let d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  if (!days.has(dayKey(d))) d = dayBefore(d);
-  let n = 0;
-  while (days.has(dayKey(d)) || nc[dayKey(d)]) { if (days.has(dayKey(d))) n += 1; d = dayBefore(d); }
-  return n;
-}
-
-// Longest run of consecutive played days (no-count days bridge a run).
-export function bestStreak() {
-  const played = playedDays();
-  const days = [...new Set([...played, ...Object.keys(nocountDays())])].sort();
-  let best = 0; let run = 0; let prev = null;
-  for (const d of days) {
-    const t = new Date(`${d}T12:00:00`);
-    if (!(prev && (t - prev) / 864e5 < 1.5)) run = 0;
-    if (played.has(d)) run += 1;
-    best = Math.max(best, run); prev = t;
+// Project only calendar/reward data. Skill histories never cross this ABI.
+const calendarState = () => { const st=load();return {
+  history:st.history.map(({day})=>({day})),nocount:st.nocount,
+  items:st.items,bonus:st.bonus,
+}; };
+function rewardOperation(op,args={}) {
+  const st=load();
+  const state=(op==='storeItems'||op==='storeAddHammer')?{items:st.items}:calendarState();
+  const out=coreCall(op,{state,...args});
+  for(const key of ['items','nocount','bonus']) if(key in out.state) {
+    if(st[key] && typeof st[key]==='object') syncInto(st[key],out.state[key]);
+    else st[key]=out.state[key];
   }
-  return best;
+  return out.result;
 }
+export const streak = (today=new Date()) => coreCall('storeStreak',{state:calendarState(),today:dayKey(today)});
+export const bestStreak = () => coreCall('storeBestStreak',{state:calendarState()});
 
 // ---------------------------------------------------------------- items (id034)
 // The first item: the "no count" hammer. One hammer turns one missed day into
 // a no-count day. Provisional: at most 3 held, only for the last 7 days, one
 // given at the start; more come from completing the daily quests (id035).
 export const HAMMER = { max: 3, reach: 7, first: 1 };
-export function items() {
-  const st = load();
-  if (!st.items) st.items = { hammer: HAMMER.first, got: HAMMER.first, used: 0, asked: null, log: [] };
-  return st.items;
-}
-// Adds up to n hammers without passing the limit; returns how many were added.
-export function addHammer(n = 1) {
-  const it = items();
-  const add = Math.max(0, Math.min(n, HAMMER.max - it.hammer));
-  it.hammer += add; it.got += add;
-  save();
-  return add;
-}
-// Should the title offer the hammer today? Returns the missed days (oldest
-// first) and the streak they would keep, or null. Only when the hammers held
-// cover every missed day since the last played day (within the reach) and
-// that streak is at least 2 days.
-export function hammerOffer(today = new Date()) {
-  const it = items();
-  const key = dayKey(today);
-  if (it.asked === key || !it.hammer) return null;
-  const played = playedDays();
-  const nc = nocountDays();
-  const gap = [];
-  let last = null;
-  for (let i = 1; i <= HAMMER.reach; i++) {
-    const d = dayBefore(today, i);
-    if (played.has(dayKey(d))) { last = d; break; }
-    if (!nc[dayKey(d)]) gap.push(dayKey(d));
-  }
-  if (!last || !gap.length || gap.length > it.hammer) return null;
-  const run = streak(last);
-  if (run < 2) return null;
-  return { days: gap.reverse(), run, hammers: it.hammer };
-}
+export function items() { rewardOperation('storeItems');return load().items; }
+export function addHammer(n=1) { const added=rewardOperation('storeAddHammer',{n});save();return added; }
+export function hammerOffer(today=new Date()) { return rewardOperation('storeHammerOffer',{today:dayKey(today)}); }
 export function declineHammer(today = new Date()) { items().asked = dayKey(today); save(); }
-export function useHammer(days, today = new Date()) {
-  const st = load();
-  const it = items();
-  if (!days.length || days.length > it.hammer) return false;
-  const nc = st.nocount || (st.nocount = {});
-  for (const d of days) nc[d] = true;
-  it.hammer -= days.length; it.used += days.length;
-  it.asked = dayKey(today);
-  it.log.push({ at: today.getTime(), days: days.slice() });
-  if (it.log.length > 50) it.log.splice(0, it.log.length - 50);
-  save();
-  return true;
+export function useHammer(days,today=new Date()) {
+  const result=rewardOperation('storeUseHammer',{days,today:dayKey(today),at:today.getTime()});
+  if(result) save();return result;
 }
 
 // ---------------------------------------------------------------- login bonus
@@ -181,23 +136,9 @@ export function useHammer(days, today = new Date()) {
 // special. Missing a day restarts the card from day 1.
 export const STICKERS = ['star', 'heart', 'flower', 'note', 'clover', 'hanamaru', 'crown'];
 
-export function claimLogin(today = new Date()) {
-  const st = load();
-  const b = st.bonus || (st.bonus = { last: null, run: 0, stickers: {}, total: 0 });
-  const key = dayKey(today);
-  if (b.last === key) return null;
-  // Continues after yesterday's visit, or across days made no-count (id034).
-  const nc = nocountDays();
-  let y = dayBefore(today);
-  while (nc[dayKey(y)] && dayKey(y) !== b.last) y = dayBefore(y);
-  b.run = b.last === dayKey(y) ? b.run + 1 : 1;
-  const slot = ((b.run - 1) % 7) + 1;
-  const type = STICKERS[slot - 1];
-  b.stickers[key] = type;
-  b.last = key;
-  b.total = (b.total || 0) + 1;
-  save();
-  return { run: b.run, slot, type, total: b.total };
+export function claimLogin(today=new Date()) {
+  const result=rewardOperation('storeClaimLogin',{today:dayKey(today)});
+  if(result) save();return result;
 }
 
 export const stickerOn = (key) => (load().bonus?.stickers || {})[key] || null;

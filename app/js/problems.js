@@ -4,7 +4,7 @@
 //   column add/sub (with decimals), column multiplication, long division,
 //   and horizontal expressions (integers, decimals, fractions, remainders).
 import { SKILL, SKILLS } from './skills.js';
-import { generateRecipe, gcd, countCarries, countBorrows } from './math-core.js';
+import { generateRecipe, columnModel, generateLegacyRecipe } from './math-core.js';
 
 export function makeRng(seed) {
   let s = seed >>> 0;
@@ -22,22 +22,14 @@ export function makeRng(seed) {
 const PLACE = ['Ones place', 'Tens place', 'Hundreds place', 'Thousands place', 'Ten-thousands place', 'Hundred-thousands place'];
 const DEC_PLACE = ['Tenths place', 'Hundredths place', 'Thousandths place'];
 const digits = (n) => String(n).split('').map(Number);
-const lcm = (a, b) => (a / gcd(a, b)) * b;
-// Multiples of d up to the first one above n (hint for "how many d in n").
-const table = (d, n) => { const out = []; for (let k = 1; k <= 9; k++) { out.push(d * k); if (d * k > n) break; } return `${d} times table: ${out.join(' ')}`; };
 // Decimal string for an integer scaled by 10^p (1234, 2 -> "12.34").
 const decStr = (n, p) => { if (!p) return String(n); const s = String(n).padStart(p + 1, '0'); return `${s.slice(0, -p)}.${s.slice(-p)}`; };
 
-const carries = countCarries;
-const borrows = countBorrows;
 
 // ================================================================ column add / sub
 // a, b are integers scaled by 10^pa / 10^pb; the decimal point is aligned.
-function buildAdd(a, b, pa = 0, pb = 0) {
-  const P = Math.max(pa, pb);
-  const A = a * 10 ** (P - pa); const B = b * 10 ** (P - pb);
-  const sum = A + B;
-  const as = decDigits(A, P); const bs = decDigits(B, P); const ss = decDigits(sum, P);
+function buildAdd(a, b, pa = 0, pb = 0, model = columnModel('add',a,b,pa,pb)) {
+  const {P, as, bs, result:ss} = model;
   const W = Math.max(as.length, bs.length, ss.length);
   const cols = W + 1;
   const cells = [];
@@ -48,14 +40,9 @@ function buildAdd(a, b, pa = 0, pb = 0) {
   cells.push({ id: 'op', r: 2, c: cols - Math.max(as.length, bs.length) - 1, text: '＋', kind: 'op' });
   if (P) addDots(cells, cols - 1 - P, [1, 2, 3]);
   const steps = [];
-  let carry = 0;
-  const ad = as.slice().reverse().map(Number); const bd = bs.slice().reverse().map(Number);
   for (let i = 0; i < ss.length; i++) {
     const c = cols - 1 - i;
-    const s = (ad[i] || 0) + (bd[i] || 0) + carry;
-    const carryIn = carry;
-    carry = s >= 10 ? 1 : 0;
-    const terms = [ad[i], bd[i]].filter((x, k) => x !== undefined && (k === 0 ? shown(as, pa, as.length - 1 - i) : shown(bs, pb, bs.length - 1 - i)));
+    const {carry, carryIn, terms} = model.steps[i];
     const help = { ids: [`a${c}`, `b${c}`, ...(carryIn ? [`k${c}`] : [])], text: terms.length ? `${terms.join(' ＋ ')}${carryIn ? ' ＋ 1' : ''}` : 'Carried 1' };
     const digit = ss[ss.length - 1 - i];
     cells.push({ id: `s${c}`, r: 3, c, text: digit, kind: 'input' });
@@ -64,15 +51,11 @@ function buildAdd(a, b, pa = 0, pb = 0) {
     steps.push({ cell: `s${c}`, digit, label: placeLabel(i, P), after, carryFrom: after.length ? c : null, help });
   }
   const text = `${decStr(a, pa)} + ${decStr(b, pb)}`;
-  return { kind: 'add', a, b, answer: decStr(sum, P), text, title: P ? 'Decimal addition' : 'Addition', rows: 4, cols, cells, lines: [{ r: 2, c0: 0, c1: cols - 1 }], steps, bracket: null };
+  return { kind: 'add', a, b, answer: model.answer, text, title: P ? 'Decimal addition' : 'Addition', rows: 4, cols, cells, lines: [{ r: 2, c0: 0, c1: cols - 1 }], steps, bracket: null };
 }
 
-function buildSub(a, b, pa = 0, pb = 0) {
-  const P = Math.max(pa, pb);
-  const A = a * 10 ** (P - pa); const B = b * 10 ** (P - pb);
-  const res = A - B;
-  const as = decDigits(A, P); const bs = decDigits(B, P);
-  const rsFull = decDigits(res, P);
+function buildSub(a, b, pa = 0, pb = 0, model = columnModel('sub',a,b,pa,pb)) {
+  const {P, as, bs, result:rsFull} = model;
   const W = as.length;
   const cols = W + 1;
   const cells = [];
@@ -81,39 +64,29 @@ function buildSub(a, b, pa = 0, pb = 0) {
   bs.forEach((d, i) => { if (shown(bs, pb, i)) cells.push({ id: `b${cols - bs.length + i}`, r: 2, c: cols - bs.length + i, text: d, kind: 'given' }); });
   cells.push({ id: 'op', r: 2, c: 0, text: '−', kind: 'op' });
   if (P) addDots(cells, cols - 1 - P, [1, 2, 3]);
-  const cur = [null, ...as.map(Number)];
-  const bcol = (c) => { const i = c - (cols - bs.length); return i >= 0 ? Number(bs[i]) : 0; };
   const steps = [];
   for (let i = 0; i < rsFull.length; i++) {
     const c = cols - 1 - i;
-    const marks = [];
-    if (cur[c] < bcol(c)) {
-      let k = c - 1;
-      while (cur[k] === 0) { cur[k] = 9; marks.push({ c: k, text: '9' }); k -= 1; }
-      cur[k] -= 1; marks.push({ c: k, text: String(cur[k]) });
-      cur[c] += 10; marks.push({ c, text: String(cur[c]) });
-    }
+    const {marks, minuend, subtrahend} = model.steps[i];
     const digit = rsFull[rsFull.length - 1 - i];
     cells.push({ id: `s${c}`, r: 3, c, text: digit, kind: 'input' });
-    const help = { ids: [`a${c}`, `b${c}`, `m${c}`], text: `${cur[c]} − ${bcol(c)}` };
+    const help = { ids: [`a${c}`, `b${c}`, `m${c}`], text: `${minuend} − ${subtrahend}` };
     steps.push({ cell: `s${c}`, digit, label: placeLabel(i, P), after: [], marks, help });
   }
   for (let c = 1; c < cols; c++) cells.push({ id: `m${c}`, r: 0, c, text: '', kind: 'mark', small: true });
   const text = `${decStr(a, pa)} − ${decStr(b, pb)}`;
-  return { kind: 'sub', a, b, answer: decStr(res, P), text, title: P ? 'Decimal subtraction' : 'Subtraction', rows: 4, cols, cells, lines: [{ r: 2, c0: 0, c1: cols - 1 }], steps, bracket: null };
+  return { kind: 'sub', a, b, answer: model.answer, text, title: P ? 'Decimal subtraction' : 'Subtraction', rows: 4, cols, cells, lines: [{ r: 2, c0: 0, c1: cols - 1 }], steps, bracket: null };
 }
 
 // Digits of a scaled decimal, with at least one digit before the point.
-function decDigits(n, p) { return String(n).padStart(p + 1, '0').split(''); }
 function placeLabel(i, P) { return i < P ? DEC_PLACE[P - 1 - i] : PLACE[i - P]; }
 // Decimal points sit on the right edge of the ones column in each row.
 function addDots(cells, c, rows, hidden = false) { rows.forEach((r) => cells.push({ id: `dot${r}`, r, c, text: '.', kind: hidden ? 'auto' : 'dot' })); }
 
 // ================================================================ column multiplication
 // a × b with b of 1 or 2 digits; pa/pb decimal places (product point is placed at the end).
-function buildMul(a, b, pa = 0, pb = 0) {
-  const prod = a * b;
-  const as = String(a); const bs = String(b); const ps = String(prod);
+function buildMul(a, b, pa = 0, pb = 0, model = columnModel('mul',a,b,pa,pb)) {
+  const {as,bs,ps,P} = model;
   const cols = Math.max(ps.length, as.length, bs.length + 1) + 1;
   const cells = [];
   [...as].forEach((d, i) => cells.push({ id: `a${cols - as.length + i}`, r: 1, c: cols - as.length + i, text: d, kind: 'given' }));
@@ -123,60 +96,45 @@ function buildMul(a, b, pa = 0, pb = 0) {
   if (pb) cells.push({ id: 'dotb', r: 2, c: cols - 1 - pb, text: '.', kind: 'dot' });
   const lines = [{ r: 2, c0: 0, c1: cols - 1 }];
   const steps = [];
-  const bd = digits(b).reverse();
-  const partialRow = (row, factor, shift, tag) => {
-    const part = String(a * factor);
-    let carry = 0;
-    const ad = digits(a).reverse();
-    for (let i = 0; i < part.length; i++) {
+  const partialRow = (row, shift, tag) => {
+    const {factor,steps:columnSteps} = model.partials[shift];
+    for (let i = 0; i < columnSteps.length; i++) {
       const c = cols - 1 - shift - i;
-      const digit = part[part.length - 1 - i];
+      const {digit,x,carry} = columnSteps[i];
       cells.push({ id: `${tag}${c}`, r: row, c, text: digit, kind: 'input' });
-      const x = ad[i];
-      const help = x !== undefined ? { ids: [`a${c + shift}`, `b${cols - 1 - shift}`], text: `${x} × ${factor}${carry ? ` ＋ ${carry}` : ''}` } : { ids: [], text: `Carry ${carry}` };
-      carry = x !== undefined ? Math.floor((x * factor + carry) / 10) : 0;
+      const help = x != null ? { ids: [`a${c + shift}`, `b${cols - 1 - shift}`], text: `${x} × ${factor}${carry ? ` ＋ ${carry}` : ''}` } : { ids: [], text: `Carry ${carry}` };
       steps.push({ cell: `${tag}${c}`, digit, label: `Multiply by ${factor}`, after: [], help });
     }
   };
-  if (bs.length === 1) {
-    partialRow(3, b, 0, 's');
-  } else {
-    partialRow(3, bd[0], 0, 'p');
-    partialRow(4, bd[1], 1, 'q');
+  if (bs.length === 1) partialRow(3, 0, 's');
+  else {
+    partialRow(3, 0, 'p'); partialRow(4, 1, 'q');
     lines.push({ r: 4, c0: 0, c1: cols - 1 });
-    const p1 = a * bd[0]; const p2 = a * bd[1] * 10;
-    let carry = 0;
-    for (let i = 0; i < ps.length; i++) {
+    model.sums.forEach(({digit,x,y,carry}, i) => {
       const c = cols - 1 - i;
-      const x = Math.floor(p1 / 10 ** i) % 10; const y = i ? Math.floor(p2 / 10 ** i) % 10 : 0;
-      const digit = ps[ps.length - 1 - i];
       cells.push({ id: `s${c}`, r: 5, c, text: digit, kind: 'input' });
       const help = { ids: [`p${c}`, `q${c}`], text: `${x}${i ? ` ＋ ${y}` : ''}${carry ? ` ＋ ${carry}` : ''}` };
-      carry = Math.floor((x + y + carry) / 10);
       steps.push({ cell: `s${c}`, digit, label: `Add (${PLACE[i]})`, after: [], help });
-    }
+    });
   }
-  const P = pa + pb;
   const lastRow = bs.length === 1 ? 3 : 5;
   if (P) { cells.push({ id: 'dotp', r: lastRow, c: cols - 1 - P, text: '.', kind: 'auto' }); steps[steps.length - 1].after.push('dotp'); }
   const text = `${decStr(a, pa)} × ${decStr(b, pb)}`;
-  return { kind: 'mul', a, b, answer: decStr(prod, P), text, title: P ? 'Decimal multiplication' : 'Multiplication', rows: lastRow + 1, cols, cells, lines, steps, bracket: null };
+  return { kind: 'mul', a, b, answer: model.answer, text, title: P ? 'Decimal multiplication' : 'Multiplication', rows: lastRow + 1, cols, cells, lines, steps, bracket: null };
 }
 
 // ================================================================ long division
 // D ÷ d (d of 1-2 digits), integer quotient, remainder allowed.
-function buildDiv(D, d) {
+function buildDiv(D, d, model = columnModel('div',D,d)) {
   const Ds = String(D); const ds = String(d);
   const off = ds.length; // dividend columns start after the divisor
   const cols = off + Ds.length;
   const cells = [];
   [...ds].forEach((x, i) => cells.push({ id: `dv${i}`, r: 1, c: i, text: x, kind: 'given' }));
   [...Ds].forEach((x, i) => cells.push({ id: `D${i + 1}`, r: 1, c: off + i, text: x, kind: 'given' }));
-  const q = Math.floor(D / d); const rem = D % d;
-  // First partial dividend: fewest leading digits that are >= d.
-  let k = 1;
-  while (Number(Ds.slice(0, k)) < d && k < Ds.length) k += 1;
-  let cur = Number(Ds.slice(0, k));
+  const {quotient:q,remainder:rem,firstDigits:k} = model;
+  let stageIndex = 0;
+  let cur = model.stages[0].current;
   let col = off + k - 1;
   let rowP = 1; // row holding the current partial dividend
   const steps = [];
@@ -189,21 +147,22 @@ function buildDiv(D, d) {
   });
   const divIds = [...ds].map((_, i) => `dv${i}`);
   for (;;) {
-    const qd = Math.floor(cur / d);
+    const stage = model.stages[stageIndex];
+    const qd = stage.quotientDigit;
     const qid = `q${col}`;
     cells.push({ id: qid, r: 0, c: col, text: String(qd), kind: 'input' });
     const last = col === cols - 1;
-    const qStep = { cell: qid, digit: String(qd), label: `Quotient: ${PLACE[cols - 1 - col]}`, hint: `How many ${d}s fit in ${cur}?`, after: [], help: { ids: divIds, text: table(d, cur) } };
+    const qStep = { cell: qid, digit: String(qd), label: `Quotient: ${PLACE[cols - 1 - col]}`, hint: `How many ${d}s fit in ${cur}?`, after: [], help: { ids: divIds, text: `${d} times table: ${stage.multiples.join(' ')}` } };
     steps.push(qStep);
     let r = cur;
     if (qd > 0) {
-      const m = qd * d;
+      const m = stage.product;
       const pr = rowP + 1;
       const mids = place(m, col, pr, 'm', 'auto');
       const lid = `L${pr}`;
       lines.push({ id: lid, r: pr, c0: col - String(Math.max(m, cur)).length + 1, c1: col, hidden: true });
       qStep.after.push(...mids, lid);
-      r = cur - m;
+      r = stage.remainder;
       rowP = pr + 1;
       // Remainder of this subtraction, typed right to left (omitted when 0 and more digits follow).
       if (r === 0 && last) {
@@ -227,7 +186,8 @@ function buildDiv(D, d) {
     const bid = `bd${rowP}_${col + 1}`;
     cells.push({ id: bid, r: rowP, c: col + 1, text: nextDigit, kind: 'auto', drop: `D${col - off + 2}` });
     steps[steps.length - 1].after.push(bid);
-    cur = r * 10 + Number(nextDigit);
+    stageIndex += 1;
+    cur = model.stages[stageIndex].current;
     col += 1;
   }
   const row = rowP;
@@ -309,10 +269,10 @@ function buildH(tokens, meta) {
 const SKILL_INDEX = Object.fromEntries(SKILLS.map((skill, index) => [skill.id, index]));
 function buildRecipe(recipe) {
   const { kind, a, b, pa = 0, pb = 0 } = recipe;
-  if (kind === 'add') return buildAdd(a, b, pa, pb);
-  if (kind === 'sub') return buildSub(a, b, pa, pb);
-  if (kind === 'mul') return buildMul(a, b, pa, pb);
-  if (kind === 'div') return buildDiv(a, b);
+  if (kind === 'add') return buildAdd(a, b, pa, pb, recipe.model);
+  if (kind === 'sub') return buildSub(a, b, pa, pb, recipe.model);
+  if (kind === 'mul') return buildMul(a, b, pa, pb, recipe.model);
+  if (kind === 'div') return buildDiv(a, b, recipe.model);
   if (kind === 'h') return buildH(recipe.tokens, recipe.meta);
   throw new Error(`Unknown Rust problem recipe: ${kind}`);
 }
@@ -347,24 +307,7 @@ export const BASIC_SETS = {
 export const EXTRA_TIERS = [['add3', 'sub3'], ['div3', 'sub3z'], ['add4', 'div3'], ['sub4', 'add4'], ['sub4', 'div3']];
 
 export function generate(template, rng, fixed) {
-  const r = (a, b) => a + Math.floor(rng() * (b - a + 1));
-  if (fixed) return finalize(fixed.kind === 'add' ? buildAdd(fixed.a, fixed.b) : fixed.kind === 'sub' ? buildSub(fixed.a, fixed.b) : buildDiv(fixed.a, fixed.b));
-  for (let guard = 0; guard < 500; guard++) {
-    let a; let b;
-    switch (template) {
-      case 'add2': a = r(12, 68); b = r(12, 89 - a); if (a + b < 100 && carries(a, b) === 1 && a % 10 && b % 10) return finalize(buildAdd(a, b)); break;
-      case 'add3': a = r(120, 780); b = r(120, 999 - a); if (a + b < 1000 && carries(a, b) >= 2) return finalize(buildAdd(a, b)); break;
-      case 'add4': a = r(1200, 7800); b = r(1200, 9999 - a); if (a + b < 10000 && carries(a, b) >= 2) return finalize(buildAdd(a, b)); break;
-      case 'sub2': a = r(31, 98); b = r(12, a - 10); if (borrows(a, b) === 1 && a - b >= 10) return finalize(buildSub(a, b)); break;
-      case 'sub3': a = r(120, 980); b = r(25, a - 20); if (borrows(a, b) >= 1 && a - b >= 10) return finalize(buildSub(a, b)); break;
-      case 'sub3z': a = r(1, 9) * 100 + r(1, 9); b = r(102, a - 50); if (a > 150 && borrows(a, b) >= 2 && Math.floor(b / 10) % 10 > 0) return finalize(buildSub(a, b)); break;
-      case 'sub4': a = r(2000, 9800); b = r(300, a - 100); if (borrows(a, b) >= 2 && a - b >= 100) return finalize(buildSub(a, b)); break;
-      case 'div2': { const d = r(2, 4); const q = r(12, 49); a = q * d; if (a < 100 && Math.floor(a / 10) >= d && q % 10) return finalize(buildDiv(a, d)); break; }
-      case 'div3': { const d = r(3, 9); const q = r(12, 99); a = q * d; if (a >= 100 && a < 1000 && Math.floor(a / 100) < d && q % 10) return finalize(buildDiv(a, d)); break; }
-      default: throw new Error(`unknown template ${template}`);
-    }
-  }
-  throw new Error(`failed to generate ${template}`);
+  return finalize(buildRecipe(generateLegacyRecipe(template,rng,fixed)));
 }
 
 export const _internal = { buildAdd, buildSub, buildMul, buildDiv, buildH, buildRecipe, decStr };

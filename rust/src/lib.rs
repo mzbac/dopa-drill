@@ -1,10 +1,13 @@
 //! Pure arithmetic, problem generation, scoring and learning state. No DOM,
 //! clock, storage or network access. The host supplies seeds and timestamps.
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::sync::{Mutex, OnceLock};
+pub mod calendar;
+pub mod columns;
 pub mod problems;
 pub mod progress;
 pub mod quests;
+pub mod rewards;
 
 pub fn skills() -> &'static Value {
     static SKILLS: OnceLock<Value> = OnceLock::new();
@@ -51,6 +54,10 @@ pub extern "C" fn combo_window(grade: f64, first: u32) -> f64 {
     combo_window_ms(grade, first != 0)
 }
 #[no_mangle]
+pub extern "C" fn base_ms(grade: f64, cells: f64) -> f64 {
+    combo_window_ms(grade, true) + (cells - 1.0).max(0.0) * combo_window_ms(grade, false)
+}
+#[no_mangle]
 pub extern "C" fn combo_milestone(c: u32) -> u32 {
     u32::from(matches!(c, 10 | 20 | 30 | 50 | 75) || (c >= 100 && c.is_multiple_of(50)))
 }
@@ -95,22 +102,44 @@ pub fn dispatch(op: &str, args: &Value) -> Result<Value, String> {
         let seed = args["seed"].as_u64().ok_or("missing seed")? as u32;
         return problems::generate(id, seed);
     }
+    if op == "columnModel" {
+        return columns::model(
+            args["kind"].as_str().unwrap_or(""),
+            args["a"].as_i64().unwrap_or(0),
+            args["b"].as_i64().unwrap_or(0),
+            args["pa"].as_u64().unwrap_or(0) as usize,
+            args["pb"].as_u64().unwrap_or(0) as usize,
+        );
+    }
+    if op == "generateLegacy" {
+        return problems::generate_legacy(args);
+    }
     if op == "metadata" {
         return Ok(skills().clone());
     }
     progress::dispatch(op, args)
         .or_else(|| quests::dispatch(op, args))
+        .or_else(|| rewards::dispatch(op, args))
+        .or_else(|| calendar::dispatch(op, args))
         .ok_or_else(|| format!("unknown operation: {op}"))
 }
 
 static OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 fn put_result(result: Result<Value, String>) -> *const u8 {
-    let response = match result {
-        Ok(value) => json!({"ok":true,"value":value}),
-        Err(error) => json!({"ok":false,"error":error}),
-    };
+    let mut response = serde_json::Map::new();
+    match result {
+        Ok(value) => {
+            response.insert("ok".into(), Value::Bool(true));
+            response.insert("value".into(), value);
+        }
+        Err(error) => {
+            response.insert("ok".into(), Value::Bool(false));
+            response.insert("error".into(), Value::String(error));
+        }
+    }
     let mut output = OUTPUT.lock().expect("single host call");
-    *output = serde_json::to_vec(&response).expect("JSON output");
+    output.clear();
+    serde_json::to_writer(&mut *output, &response).expect("JSON output");
     output.as_ptr()
 }
 #[no_mangle]
