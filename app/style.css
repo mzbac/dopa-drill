@@ -735,3 +735,110 @@ body.guide-open .logo *, body.guide-open .logo-burst { animation: none !importan
 .guide-help-fallback::after { content: ''; position: absolute; inset: -5px; border: 2px solid var(--yellow); border-radius: 14px; animation: guide-help-pulse 1.4s ease-in-out infinite; }
 @keyframes guide-help-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 body.reduced #guide-help-ring, body.reduced .guide-help-fallback::after { animation: none; }
+
+/* English touch edition: roomy iPad layouts, readable copy and safe areas. */
+:root { --round: ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif; --chunky: "Dela Gothic One", "Arial Black", system-ui, sans-serif; }
+#app { width: min(100vw, 680px); height: 100dvh; max-height: none; top: 0; }
+#screen-title { padding-top: calc(16px + env(safe-area-inset-top)); gap: 12px; }
+.logo { --fs: clamp(46px, 11vw, 68px); margin-top: 38px; }
+.logo-top { letter-spacing: -.05em; }
+.logo-burst { width: 250px; height: 250px; }
+.logo-ribbon { font-size: 32px; padding: .1em .8em .18em; }
+.edition-label { font-size: 10px; letter-spacing: .17em; font-weight: 900; opacity: .65; margin: 14px 0 0; }
+.title-stage { height: clamp(120px, 17vh, 170px); }
+.modes { width: min(100%, 460px); }
+.level-btn { min-width: 280px; }
+.big-btn { letter-spacing: 0; font-size: 25px; }
+.big-btn small { font-size: 13px; }
+.mode-row { width: 100%; gap: 8px; }
+.mode-row .sub-btn { flex: 1; padding: 4px; font-size: 14px; min-width: 0; }
+.grades { width: 100%; }
+.grades button { flex: 1; min-width: 0; }
+.grades button small { font-size: 10px; }
+.play-tip { width: min(100%, 420px); margin: 0; text-align: center; font-size: 13px; line-height: 1.5; }
+.hint { text-align: center; }
+.ipad-help { width: min(100%, 460px); font-size: 12px; line-height: 1.6; padding: 12px 16px; border: 2px solid var(--ink); border-radius: 16px; background: #fffaf0; }
+.ipad-help summary { min-height: 28px; cursor: pointer; font-size: 13px; }
+.ipad-help a { color: #294ecc; text-underline-offset: 3px; }
+#screen-play { padding-top: calc(10px + env(safe-area-inset-top)); }
+.hud { min-height: 48px; }
+.hud2 { min-height: 42px; }
+.icon-btn { min-width: 44px; min-height: 44px; }
+.home-btn { font-family: system-ui, sans-serif; font-size: 28px; }
+.clock { padding-inline: 8px; gap: 6px; }
+.tally span { padding-inline: 7px; font-size: 12px; }
+.dopa { max-width: 42%; }
+.dopa b { font-size: 18px; }
+.card-top { gap: 8px; }
+.chip { letter-spacing: 0; font-size: 13px; }
+.qno { font-size: 12px; white-space: nowrap; }
+#step-label { margin: 6px 0; font-size: 13px; min-height: 20px; line-height: 1.35; }
+.pad button { height: clamp(58px, 8dvh, 82px); font-size: 34px; touch-action: manipulation; }
+.pad { gap: 10px; padding-bottom: 4px; }
+.sheet-wrap { min-height: 224px; }
+.modal-card { width: min(100%, 500px); }
+.modal-card .big-btn { min-width: 160px; font-size: 22px; }
+.confirm-actions .sub-btn { min-width: 0; flex: 1; height: auto; min-height: 52px; padding: 8px 12px; }
+.modal { padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+.tree-head h2 { font-size: 22px; }
+.node { font-family: var(--round); }
+.node > span:not(.g) { font-size: 11px; line-height: 1.15; overflow-wrap: anywhere; }
+.node .g { font-size: 9px; }
+.tree-note { font-size: 11px; line-height: 1.4; padding-inline: 14px; }
+.tr-filter button, .co-tabs button, .cal-nav { min-height: 44px; }
+.co-name { word-break: normal; }
+.co-item { min-height: 108px; }
+.actions .sub-btn, .actions .big-btn { min-height: 52px; height: auto; padding: 10px 14px; white-space: normal; }
+#engine-loading { position: fixed; inset: 0; z-index: 30; display: grid; place-content: center; padding: 24px; background: var(--paper); text-align: center; gap: 16px; }
+#engine-loading[hidden] { display: none; }
+#engine-loading h2 { margin: 0; }
+#engine-loading button { min-height: 48px; }
+.engine-status { font-size: 12px; margin: 0; color: #505781; }
+@media (min-width: 768px) and (min-height: 700px) {
+  .pad { gap: 12px; }
+  .card { margin-bottom: 18px; padding: 14px 20px; }
+  .sheet-wrap { min-height: 260px; }
+  .stage { min-height: 140px; }
+  .card-top .chip { font-size: 16px; }
+  .qno { font-size: 14px; }
+  #step-label { font-size: 16px; }
+}
+@media (min-width: 850px) and (orientation: landscape) {
+  #app { width: min(100vw, 1120px); }
+  #screen-play.is-active { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .62fr); grid-template-rows: 50px 42px minmax(110px, 1fr) auto; column-gap: 20px; padding: max(14px, env(safe-area-inset-top)) 20px max(18px, env(safe-area-inset-bottom)); }
+  #screen-play .hud { grid-column: 1 / -1; grid-row: 1; }
+  #screen-play .hud2 { grid-column: 1; grid-row: 2; }
+  #screen-play .stage { grid-column: 1; grid-row: 3; min-height: 100px; }
+  #screen-play .card { grid-column: 1; grid-row: 4; margin-bottom: 4px; }
+  #screen-play .pad { grid-column: 2; grid-row: 2 / 5; align-content: center; padding: 0 0 8px; gap: 14px; }
+  #screen-play .pad button { height: clamp(64px, 12dvh, 104px); font-size: 38px; }
+  #screen-play .sheet-wrap { min-height: clamp(200px, 32dvh, 280px); }
+  #screen-title { max-width: 700px; left: calc((100% - 700px) / 2); right: auto; width: 700px; }
+  #screen-title .logo { margin-top: 25px; }
+  #screen-title .title-stage { height: 128px; }
+  .result-card { max-width: 620px; }
+}
+@media (max-height: 740px) and (max-width: 849px) {
+  #screen-play { overflow-y: auto; }
+  .stage { min-height: 82px; }
+  .sheet-wrap { min-height: 170px; }
+  .pad button { height: 50px; font-size: 28px; }
+  .pad { gap: 7px; }
+  .card { padding-block: 7px; margin-bottom: 12px; }
+  .hud, .hud2 { flex: none; }
+  .tally .ng { font-size: 10px; }
+  #step-label { font-size: 12px; }
+}
+@media (max-width: 390px) {
+  .hud { gap: 5px; padding-inline: 10px; }
+  .clock { font-size: 10px; }
+  .clock b { font-size: 16px; }
+  .pips { gap: 2px; }
+  .pip { width: 9px; height: 9px; border-width: 1.5px; }
+  .tally .ng { font-size: 10px; }
+  .dopa { padding-inline: 8px; }
+  .dopa small { font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}

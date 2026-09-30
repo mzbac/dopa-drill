@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Every skill generator yields consistent, well-formed problems (id020).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,13 +49,13 @@ function checkAnswer(p) {
     assert.equal(Number(q), Math.floor(p.a / p.b), p.text);
     assert.equal(p.rem, p.a % p.b, p.text);
   } else {
-    const expect = p.answer.replace(/ あまり /, '').replace(/と/, '').replace('.', '');
+    const expect = p.answer.replace(/ R /, '').replace(/ /, '').replace('.', '');
     // Fractions are typed denominator first.
-    const fr = p.answer.match(/^(?:(\d+)と)?(\d+)\/(\d+)$/);
+    const fr = p.answer.match(/^(?:(\d+) )?(\d+)\/(\d+)$/);
     const want = fr ? `${fr[1] || ''}${fr[3]}${fr[2]}` : expect;
     assert.equal(typed, want, `${p.skill} ${p.text} -> ${p.answer}`);
     const v = evalText(p.text);
-    if (v !== null && !p.answer.includes('あまり')) assert.ok(Math.abs(v - num(p.answer)) < 1e-9, `${p.skill} ${p.text} = ${p.answer}`);
+    if (v !== null && !p.answer.includes(' R ')) assert.ok(Math.abs(v - num(p.answer)) < 1e-9, `${p.skill} ${p.text} = ${p.answer}`);
   }
 }
 

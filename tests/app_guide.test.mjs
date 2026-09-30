@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Placement regressions use the reviewer's actual pc-4 geometry.
 import test from 'node:test';
 import assert from 'node:assert/strict';

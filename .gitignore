@@ -3,3 +3,8 @@ node_modules/
 *.log
 .env
 .env.*
+
+# Rust build products
+rust/target/
+
+qa/

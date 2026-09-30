@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Trophies (id036).
 import test from 'node:test';
 import assert from 'node:assert/strict';

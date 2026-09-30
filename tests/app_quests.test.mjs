@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Daily quests (id035).
 import test from 'node:test';
 import assert from 'node:assert/strict';

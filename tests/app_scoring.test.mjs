@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Scoring and dopa curves for the public app (id014).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -45,7 +46,7 @@ test('combo multiplier rises evenly to x2.0 at 20 and stays there (id046)', () =
 
 test('even a very fast full-combo run stays at a few 億 and never passes the ceiling (id046)', () => {
   const fast = run({ extras: 23 });
-  assert.match(fmtDopa(fast.L), /億$/);
+  assert.match(fmtDopa(fast.L), /M$/);
   assert.ok(fast.L < 8.8, `23 extras: ${fmtDopa(fast.L)}`);
   assert.ok(run({ extras: 200 }).L <= DOPA_MAX_L);
   assert.ok(run({ extras: 200, combo: false }).L < DOPA_MAX_L);
@@ -66,12 +67,12 @@ test('basic curve rises monotonically from small numbers', () => {
 
 test('milestone units below 万', () => {
   assert.equal(unitOf(1.9), '');
-  assert.equal(unitOf(2.1), '百');
-  assert.equal(unitOf(3.5), '千');
-  assert.equal(unitOf(4.5), '万');
-  assert.equal(unitOf(6.2), '百万');
-  assert.equal(unitLabel('千万'), '1000万');
-  assert.equal(unitOf(8.3), '億');
-  assert.equal(unitLabel('百'), '100');
-  assert.equal(unitLabel('億'), '1億');
+  assert.equal(unitOf(2.1), '100');
+  assert.equal(unitOf(3.5), 'K');
+  assert.equal(unitOf(4.5), '10K');
+  assert.equal(unitOf(6.2), 'M');
+  assert.equal(unitLabel('10M'), '10M');
+  assert.equal(unitOf(8.3), '100M');
+  assert.equal(unitLabel('100'), '100');
+  assert.equal(unitLabel('100M'), '100M');
 });

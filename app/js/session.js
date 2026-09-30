@@ -1,17 +1,13 @@
-// Session planning (which skills to ask) and per-skill progress.
-// Pure logic over a plain progress object so it can be unit tested;
-// persistence is handled by store.js.
-import { SKILLS, SKILL, DEPTH, MASTERY, LANES, skillsOfGrade } from './skills.js';
-const LANES_N = LANES.length;
+// Rust owns learning rules. JS adapts saved objects and formats the skill tree.
+import { SKILLS, SKILL, DEPTH, LANES } from './skills.js';
 import { makeProblem, signature } from './problems.js';
 import { comboWindowMs } from './scoring.js';
 import { daysBetween } from './growth.js';
-
-// Skills in a single easy -> hard order (placement walks along it).
-export const ORDER = SKILLS.slice().sort((a, b) => DEPTH[a.id] - DEPTH[b.id] || a.grade - b.grade || SKILLS.indexOf(a) - SKILLS.indexOf(b)).map((s) => s.id);
-
-// Placement walks grade by grade (prerequisites never come from a later grade).
-export const PLACEMENT = SKILLS.slice().sort((a, b) => a.grade - b.grade || DEPTH[a.id] - DEPTH[b.id]).map((s) => s.id);
+import { coreCall, syncInto } from './math-core.js';
+const LANES_N = LANES.length;
+// Static curriculum order also feeds visual tree layout before WASM is ready.
+export const ORDER = SKILLS.slice().sort((a,b) => DEPTH[a.id]-DEPTH[b.id] || a.grade-b.grade || SKILLS.indexOf(a)-SKILLS.indexOf(b)).map(s=>s.id);
+export const PLACEMENT = SKILLS.slice().sort((a,b) => a.grade-b.grade || DEPTH[a.id]-DEPTH[b.id]).map(s=>s.id);
 
 // Skill-tree layout: each lane gets SUB columns and skills are placed grade
 // by grade, so the tree reads top-down by school year. Grades 5-6 all sit
@@ -52,110 +48,72 @@ export const TREE_LAYOUT = (() => {
   return { row, col, rows: Math.max(...Object.values(row)) + 1, cols: LANES_N * TREE_SUB };
 })();
 
-export function emptyProgress() { return { placed: false, skills: {}, review: [] }; }
-
-const rec = (prog, id) => prog.skills[id] || (prog.skills[id] = { n: 0, hist: [], mastered: false, recent: [] });
-
-export const isMastered = (prog, id) => !!(prog.skills[id] && prog.skills[id].mastered);
-export const isUnlocked = (prog, id) => SKILL[id].req.every((r) => isMastered(prog, r));
-
-export function stateOf(prog, id) {
-  if (isMastered(prog, id)) return 'mastered';
-  if (isUnlocked(prog, id)) return (prog.skills[id] && prog.skills[id].n) ? 'learning' : 'new';
-  return 'locked';
-}
-
-// Mark a skill (and everything it depends on) as mastered.
-export function masterWithAncestors(prog, id, at = Date.now()) {
-  const r = rec(prog, id);
-  r.mastered = true;
-  if (!r.masteredAt) r.masteredAt = at;
-  if (!r.grantedAt) r.grantedAt = at;
-  r.stars = Math.max(r.stars || 0, 1);
-  for (const p of SKILL[id].req) if (!isMastered(prog, p)) masterWithAncestors(prog, p, at);
-}
-
-// Growth records per skill (id033, provisional sizes).
-export const TIMES_MAX = 30; // recent answers: time, cells, first try, slips, day
-export const FIRST_MAX = 3; // the very first problems, kept whole for the time capsule
-export const DAYS_MAX = 60; // one aggregate per played day
-
-// Record one finished problem. Returns ids that became unlocked because of it.
-// info (optional): { at, day, ms, cells, misses, problem } from a timed answer.
-export function recordResult(prog, id, firstTry, sig, info = {}) {
-  const at = info.at ?? Date.now();
-  const before = new Set(SKILLS.filter((s) => isUnlocked(prog, s.id)).map((s) => s.id));
-  const wasRusty = rustyOf(prog, at).includes(id);
-  const r = rec(prog, id);
-  r.n += 1;
-  r.hist.push(firstTry ? 1 : 0);
-  if (r.hist.length > MASTERY.window) r.hist.splice(0, r.hist.length - MASTERY.window);
-  r.last = at;
-  if (firstTry) r.lastOk = at;
-  if (sig) { r.recent.push(sig); if (r.recent.length > 24) r.recent.splice(0, r.recent.length - 24); }
-  if (info.ms != null && info.day) noteTiming(r, firstTry, info, at);
-  const wasMastered = r.mastered;
-  if (!r.mastered && r.hist.length >= MASTERY.window && r.hist.reduce((a, b) => a + b, 0) >= MASTERY.need) { r.mastered = true; r.masteredAt = at; }
-  const stars = updateStars(r, SKILL[id].grade, info.day || null);
-  const unlocked = SKILLS.filter((s) => !before.has(s.id) && isUnlocked(prog, s.id)).map((s) => s.id);
-  return { unlocked, mastered: !wasMastered && r.mastered, stars, polished: wasRusty && firstTry };
-}
-
-// ---------------------------------------------------------------- rust (id040)
-// Light touch: one level only (rusty or not), and at most three skills at a
-// time, the ones left alone longest. A single first-try answer polishes it.
-// Stars are never taken away.
+export const TIMES_MAX = 30;
+export const FIRST_MAX = 3;
+export const DAYS_MAX = 60;
 export const RUST = { days: 21, max: 3 };
-const rustClock = (r) => r.lastOk || r.grantedAt || r.masteredAt || null;
-export function rustyOf(prog, now = Date.now()) {
-  return Object.entries(prog.skills)
-    .filter(([id, r]) => SKILL[id] && r.mastered && rustClock(r) && now - rustClock(r) >= RUST.days * 864e5)
-    .sort((a, b) => rustClock(a[1]) - rustClock(b[1]))
-    .slice(0, RUST.max)
-    .map(([id]) => id);
-}
-
-// ---------------------------------------------------------------- stars (id037)
-// After mastery (1 star), stars grow with understanding and never go down:
-// 2 accuracy, 3 speed, 4 retention after a gap, 5 accurate and fast.
-// Times are compared with the combo window of the skill's grade (id032),
-// so "fast" means answering every cell within that window.
 export const STAR_MAX = 5;
 export const STAR_RULE = { accN: 20, acc: 0.9, speedN: 10, speedMin: 5, gapDays: 7, holdRun: 3, topN: 20, top: 0.95, topSpeed: 0.6 };
-export const baseMs = (grade, cells) => comboWindowMs(grade, true) + Math.max(0, cells - 1) * comboWindowMs(grade, false);
-const median = (xs) => { const a = xs.slice().sort((x, y) => x - y); const n = a.length; return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : Infinity; };
-const rate = (list) => (list.length ? list.filter((e) => e.f).length / list.length : 0);
-const speedOf = (list, grade) => median(list.filter((e) => e.f).map((e) => e.t / baseMs(grade, e.c)));
-export const starsOf = (prog, id) => { const r = prog.skills[id]; return r ? Math.max(r.stars || 0, r.mastered ? 1 : 0) : 0; };
-
-// Whether the next star (n = 2..5) is earned now.
-function meets(r, grade, n) {
-  const times = r.times || [];
-  const R = STAR_RULE;
-  if (n === 2) { const l = times.slice(-R.accN); return l.length >= R.accN && rate(l) >= R.acc; }
-  if (n === 3) { const l = times.slice(-R.speedN); return l.length >= R.speedN && l.filter((e) => e.f).length >= R.speedMin && speedOf(l, grade) <= 1; }
-  if (n === 4) {
-    const since = r.starDay && r.starDay[3];
-    const l = times.slice(-R.holdRun);
-    return !!since && l.length >= R.holdRun && l.every((e) => e.f && e.d && daysBetween(since, e.d) >= R.gapDays);
-  }
-  if (n === 5) { const l = times.slice(-R.topN); return l.length >= R.topN && rate(l) >= R.top && speedOf(l, grade) <= R.topSpeed; }
-  return false;
+export const CAPSULE = { days: 30 };
+// Project only required saved fields for small read-only queries. Histories and
+// stored problem grids never cross the ABI while rendering each tree node.
+const view = (prog, fields, ids = Object.keys(prog.skills)) => ({ skills: Object.fromEntries(ids.filter(id=>prog.skills[id]).map(id=>[id,Object.fromEntries(fields.filter(key=>key in prog.skills[id]).map(key=>[key,prog.skills[id][key]]))])) });
+export const emptyProgress = () => coreCall('emptyProgress');
+export const isMastered = (prog,id) => coreCall('isMastered',{prog:view(prog,['mastered'],[id]),id});
+export const isUnlocked = (prog,id) => coreCall('isUnlocked',{prog:view(prog,['mastered'],SKILL[id].req),id});
+export const stateOf = (prog,id) => coreCall('stateOf',{prog:view(prog,['mastered','n'],[id,...SKILL[id].req]),id});
+export const masteryRatio = (prog,id) => coreCall('masteryRatio',{prog:view(prog,['mastered','hist'],[id]),id});
+export const rustyOf = (prog,now=Date.now()) => coreCall('rustyOf',{prog:view(prog,['mastered','lastOk','grantedAt','masteredAt']),now});
+export const starsOf = (prog,id) => coreCall('starsOf',{prog:view(prog,['mastered','stars'],[id]),id});
+export const baseMs = (grade,cells) => coreCall('baseMs',{grade,cells});
+export const frontier = (prog) => coreCall('frontier',{prog:view(prog,['mastered'])});
+export const dependents = (id) => coreCall('dependents',{id});
+export const relockTargets = (prog,id) => coreCall('relockTargets',{prog,id});
+export function masterWithAncestors(prog,id,at=Date.now()) {
+  syncInto(prog, coreCall('masterWithAncestors',{prog,id,at}));
 }
-
-// Raise the stars as far as the records allow. Returns the new count when it
-// went up, otherwise 0.
-export function updateStars(r, grade, day) {
-  if (!r.mastered) return 0;
-  const before = Math.max(r.stars || 0, 0);
-  let s = Math.max(before, 1);
-  r.starDay = r.starDay || {};
-  while (s < STAR_MAX && meets(r, grade, s + 1)) { s += 1; if (day && !r.starDay[s]) r.starDay[s] = day; }
-  if (day && !r.starDay[1]) r.starDay[1] = day;
-  r.stars = s;
-  return s > before ? s : 0;
+export function recordResult(prog,id,firstTry,sig,info={}) {
+  const out=coreCall('recordResult',{prog,id,firstTry,sig,info:{...info,at:info.at??Date.now()}});
+  syncInto(prog,out.prog); return out.result;
 }
+export function updateStars(record,grade,day) {
+  const out=coreCall('updateStars',{record,grade,day}); syncInto(record,out.record); return out.result;
+}
+export function relockSkill(prog,id) {
+  const out=coreCall('relockSkill',{prog,id}); syncInto(prog,out.prog); return out.result;
+}
+export const pickCapsule = (prog,now=Date.now()) => coreCall('pickCapsule',{prog,now});
+export function useCapsule(prog,skill,index,at=Date.now()) {
+  const out=coreCall('useCapsule',{prog,id:skill,index,at}); syncInto(prog,out.prog); return out.result;
+}
+export function gradePlan(grade,N,rng) {
+  const out=coreCall('gradePlan',{grade,n:N,random:Array.from({length:N},()=>rng())});
+  return { mode:'grade',grade,basic:out.basic,extra:(k)=>k<out.extra.length?out.extra[k]:out.extraCycle[(k-out.extra.length)%out.extraCycle.length] };
+}
+export function levelPlan(prog,N,rng,now=Date.now()) {
+  if (!prog.placed) return placementPlan(prog,N);
+  // Supply an upper bound; Rust reports how many draws it used, so seeded
+  // streams keep the same position as the original adaptive planner.
+  const state = typeof rng.getState === 'function' ? rng.getState() : null;
+  const out=coreCall('levelPlan',{prog,n:N,random:Array.from({length:N},()=>rng()),now});
+  if (state != null && typeof out.randomUsed === 'number') { rng.setState(state); for(let i=0;i<out.randomUsed;i++) rng(); }
+  return {mode:'level',basic:out.basic,extra:(k)=>out.extra[k%out.extra.length]};
+}
+export function placementPlan(prog,N) {
+  const walk={p:0,jump:6,lastOk:-1};
+  return {mode:'level',placement:true,walk,basic:Array.from({length:N},()=>null),
+    pick:()=>PLACEMENT[Math.min(PLACEMENT.length-1,walk.p)],
+    answer(firstTry){const out=coreCall('placementStep',{prog,walk,firstTry,at:Date.now()});syncInto(prog,out.prog);syncInto(walk,out.walk);},
+    extra(){const ids=frontier(prog);return ids.length?ids[0]:PLACEMENT[walk.p];}};
+}
+export function reviewPlan(items) { return {mode:'review',basic:items.map(item=>item.skill||null),items}; }
+export function problemFor(prog,skillId,rng) { return makeProblem(skillId,rng,new Set(prog.skills[skillId]?.recent||[])); }
+export { signature };
 
+// Presentation-only progress descriptions. Star eligibility is decided by Rust.
+const median = (xs) => { const a=xs.slice().sort((x,y)=>x-y);const n=a.length;return n?(n%2?a[(n-1)/2]:(a[n/2-1]+a[n/2])/2):Infinity; };
+const rate = (list) => list.length?list.filter(e=>e.f).length/list.length:0;
+const speedOf = (list,grade) => median(list.filter(e=>e.f).map(e=>e.t/baseMs(grade,e.c)));
 // What the next star asks for, with the child's current numbers (for the tree).
 export function nextStar(prog, id, today = null) {
   const r = prog.skills[id];
@@ -169,157 +127,14 @@ export function nextStar(prog, id, today = null) {
   const pct = (l) => Math.round(rate(l) * 100);
   const cur = (l) => { const v = speedOf(l, grade); return Number.isFinite(v) ? Math.round((v * baseMs(grade, cells)) / 100) / 10 : null; };
   const n = s + 1;
-  if (n === 2) { const l = times.slice(-R.accN); return { n, text: `さいきん ${R.accN}もんの 初回正解が ${R.acc * 100}% いじょう`, now: `いま ${l.length}もん・${pct(l)}%` }; }
-  if (n === 3) { const l = times.slice(-R.speedN); const c = cur(l); return { n, text: `1もんを だいたい ${sec(1)}びょう いないで とく`, now: c == null ? `いま ${l.length}もん` : `いま ${c}びょう（${l.length}/${R.speedN}もん）` }; }
+  if (n === 2) { const l = times.slice(-R.accN); return { n, text: `Get at least ${R.acc * 100}% right on your first try over your last ${R.accN} questions`, now: `So far: ${l.length} questions · ${pct(l)}%` }; }
+  if (n === 3) { const l = times.slice(-R.speedN); const c = cur(l); return { n, text: `Solve questions in about ${sec(1)} seconds or less`, now: c == null ? `So far: ${l.length} questions` : `So far: ${c} seconds (${l.length}/${R.speedN} questions)` }; }
   if (n === 4) {
     const since = r.starDay && r.starDay[3];
     const ref = today || (times.length ? times[times.length - 1].d : since);
     const wait = since && ref ? Math.max(0, R.gapDays - daysBetween(since, ref)) : R.gapDays;
-    return { n, text: `☆3から ${R.gapDays}日 たってから、${R.holdRun}もん つづけて 初回正解`, now: wait ? `あと ${wait}日 まってね` : 'きょうから ちょうせん できるよ' };
+    return { n, text: `Wait ${R.gapDays} days after earning ☆3, then get ${R.holdRun} questions right in a row on your first try`, now: wait ? `Try again in ${wait} ${wait === 1 ? 'day' : 'days'}` : 'You can try today!' };
   }
   const l = times.slice(-R.topN); const c = cur(l);
-  return { n, text: `さいきん ${R.topN}もんの 初回正解が ${R.top * 100}% いじょうで、1もん ${sec(R.topSpeed)}びょう いない`, now: `いま ${pct(l)}%${c == null ? '' : `・${c}びょう`}` };
-}
-
-function noteTiming(r, firstTry, { day, ms, cells = 1, misses = 0, problem = null }, at) {
-  const t = Math.max(0, Math.round(ms));
-  const times = r.times || (r.times = []);
-  times.push({ t, c: cells, f: firstTry ? 1 : 0, m: misses, d: day });
-  if (times.length > TIMES_MAX) times.splice(0, times.length - TIMES_MAX);
-  const days = r.days || (r.days = []);
-  let g = days[days.length - 1];
-  if (!g || g.d !== day) { g = { d: day, n: 0, ms: 0, f: 0, c: 0 }; days.push(g); }
-  g.n += 1; g.ms += t; g.f += firstTry ? 1 : 0; g.c += cells;
-  if (days.length > DAYS_MAX) days.splice(0, days.length - DAYS_MAX);
-  const first = r.first || (r.first = []);
-  if (problem && first.length < FIRST_MAX) first.push({ p: problem, t, m: misses, d: day, at });
-}
-
-// Skills built on id, directly or through other skills (id itself excluded),
-// in easy -> hard order.
-export function dependents(id) {
-  const out = new Set([id]);
-  for (const x of ORDER) if (SKILL[x].req.some((r) => out.has(r))) out.add(x);
-  out.delete(id);
-  return ORDER.filter((x) => out.has(x));
-}
-
-// Skills whose records a relock of id would erase (id first).
-export const relockTargets = (prog, id) => [id, ...dependents(id)].filter((x) => prog.skills[x]);
-
-// Forget a skill and everything built on it. The dependents lose a mastered
-// prerequisite, so they fall back to locked; id itself shows as new (or locked
-// if its own prerequisites are not mastered). Returns the erased ids.
-export function relockSkill(prog, id) {
-  const gone = relockTargets(prog, id);
-  for (const x of gone) delete prog.skills[x];
-  return gone;
-}
-
-// Progress toward mastery, 0..1, for display.
-export function masteryRatio(prog, id) {
-  const r = prog.skills[id];
-  if (!r) return 0;
-  if (r.mastered) return 1;
-  const ok = r.hist.reduce((a, b) => a + b, 0);
-  return Math.min(0.95, ok / MASTERY.need);
-}
-
-// ---------------------------------------------------------------- planners
-// A plan answers: which skill for basic problem i, and for extra problem k.
-// "adaptive" plans also react to answers (placement walk).
-
-export function gradePlan(grade, N, rng) {
-  const list = skillsOfGrade(grade).sort((a, b) => DEPTH[a.id] - DEPTH[b.id]).map((s) => s.id);
-  const next = skillsOfGrade(Math.min(6, grade + 1)).sort((a, b) => DEPTH[a.id] - DEPTH[b.id]).map((s) => s.id);
-  const basic = Array.from({ length: N }, (_, i) => {
-    // Walk from easy to hard across the grade with a little jitter.
-    const t = N <= 1 ? 1 : i / (N - 1);
-    const j = Math.round(t * (list.length - 1) + (rng() - 0.5) * 1.6);
-    return list[Math.max(0, Math.min(list.length - 1, j))];
-  });
-  const hard = list.slice(Math.floor(list.length * 0.55));
-  return {
-    mode: 'grade', grade, basic,
-    extra: (k) => (k < 6 || grade === 6 ? hard[k % hard.length] : next[(k - 6) % Math.max(1, Math.min(next.length, 4))]),
-  };
-}
-
-// Frontier = unlocked but not mastered; "warm" = mastered (light review).
-export function frontier(prog) { return ORDER.filter((id) => isUnlocked(prog, id) && !isMastered(prog, id)); }
-
-export function levelPlan(prog, N, rng, now = Date.now()) {
-  if (!prog.placed) return placementPlan(prog, N);
-  const front = frontier(prog);
-  const warm = ORDER.filter((id) => isMastered(prog, id));
-  // Rusty skills (id040) take the review slots first; the share does not change.
-  const rusty = rustyOf(prog, now);
-  // Recent mastered skills first, then the frontier (least practised first).
-  const warmPick = warm.slice(-6);
-  const nWarm = Math.min(warmPick.length, Math.max(1, Math.round(N * 0.3)));
-  const frontSorted = front.slice(0, 4);
-  const basic = [];
-  for (let i = 0; i < nWarm; i++) basic.push(i < rusty.length ? rusty[i] : warmPick[Math.floor(rng() * warmPick.length)]);
-  for (let i = nWarm; i < N; i++) basic.push(frontSorted.length ? frontSorted[(i - nWarm) % frontSorted.length] : warm[Math.floor(rng() * warm.length)]);
-  const hardest = front.length ? front.slice(-3) : warm.slice(-3);
-  return { mode: 'level', basic, extra: (k) => hardest[k % hardest.length] };
-}
-
-// First session: walk along PLACEMENT, jumping ahead after clean answers and
-// easing back after slips. A clean answer grants that skill and its ancestors,
-// so a skill may be asked before it is unlocked (skipping ahead).
-export function placementPlan(prog, N) {
-  const walk = { p: 0, jump: 6, lastOk: -1 };
-  return {
-    mode: 'level', placement: true, walk,
-    basic: Array.from({ length: N }, () => null),
-    pick() { return PLACEMENT[Math.min(PLACEMENT.length - 1, walk.p)]; },
-    answer(firstTry) {
-      if (firstTry) {
-        masterWithAncestors(prog, PLACEMENT[walk.p]);
-        walk.lastOk = walk.p;
-        walk.p = Math.min(PLACEMENT.length - 1, walk.p + walk.jump);
-        walk.jump = Math.min(12, Math.ceil(walk.jump * 1.3));
-      } else {
-        walk.jump = Math.max(1, Math.floor(walk.jump / 2));
-        walk.p = Math.min(walk.p, Math.max(walk.lastOk + 1, walk.p - walk.jump));
-      }
-    },
-    extra: () => { const f = frontier(prog); return f.length ? f[0] : PLACEMENT[walk.p]; },
-  };
-}
-
-export function reviewPlan(items) {
-  return { mode: 'review', basic: items.map((it) => it.skill || null), items };
-}
-
-// Problem factory honouring per-skill recent signatures.
-export function problemFor(prog, skillId, rng) {
-  const r = prog.skills[skillId];
-  const recent = new Set(r ? r.recent : []);
-  const p = makeProblem(skillId, rng, recent);
-  return p;
-}
-
-export { signature };
-
-// ---------------------------------------------------------------- time capsule (id039)
-// A problem from the child's first days with a skill comes back once it is
-// mastered and a month has passed, to compare "that day" with today.
-export const CAPSULE = { days: 30 };
-export function pickCapsule(prog, now = Date.now()) {
-  let best = null;
-  for (const [id, r] of Object.entries(prog.skills)) {
-    if (!r.mastered || !r.first || !SKILL[id]) continue;
-    r.first.forEach((e, i) => {
-      if (e.used || !e.p || !e.at || now - e.at < CAPSULE.days * 864e5) return;
-      if (!best || e.at < best.entry.at) best = { skill: id, index: i, entry: e };
-    });
-  }
-  return best;
-}
-export function useCapsule(prog, skill, index, at = Date.now()) {
-  const e = prog.skills[skill] && prog.skills[skill].first && prog.skills[skill].first[index];
-  if (e) e.used = at;
-  return !!e;
+  return { n, text: `Get at least ${R.top * 100}% right on your first try over your last ${R.topN} questions, in about ${sec(R.topSpeed)} seconds per question or less`, now: `So far: ${pct(l)}%${c == null ? '' : ` · ${c} seconds`}` };
 }

@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Local persistence for the public app (id016, id017).
 import test from 'node:test';
 import assert from 'node:assert/strict';

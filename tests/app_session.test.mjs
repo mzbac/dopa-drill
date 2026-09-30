@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Session planning and mastery (id021, id022, id023).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -106,7 +107,7 @@ test('tree layout: grades 5-6 sit below every grade 1-4 skill, with a blank row 
   const upMin = Math.min(...SKILLS.filter((s) => s.grade >= TREE_UPPER).map((s) => row[s.id]));
   assert.ok(upMin >= lowMax + 2, `grade 5 starts at ${upMin}, grade 4 ends at ${lowMax}`);
   assert.ok(row['g4-vdiv-3d2'] <= lowMax);
-  assert.ok(row['g4-vdiv-3d2'] < 19, `3けた÷2けた at row ${row['g4-vdiv-3d2']}`); // was row 19 before id049
+  assert.ok(row['g4-vdiv-3d2'] < 19, `3 digits ÷ 2 digits at row ${row['g4-vdiv-3d2']}`); // was row 19 before id049
 });
 
 test('timed answers keep recent times, one aggregate per day and the first problems (id033)', () => {
@@ -158,7 +159,7 @@ test('stars: 1 at mastery, then accuracy, speed, retention and mastery of speed;
   // Star 4 needs a gap of a week, then three clean answers.
   for (let i = 0; i < 3; i++) answer(true, ok);
   assert.equal(starsOf(prog, id), 3);
-  assert.match(nextStar(prog, id, '2026-10-03').now, /あと 5日/);
+  assert.match(nextStar(prog, id, '2026-10-03').now, /Try again in 5 days/);
   day = 9;
   for (let i = 0; i < 3; i++) answer(true, ok);
   assert.equal(starsOf(prog, id), 4);

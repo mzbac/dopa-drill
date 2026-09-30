@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Skill tree data integrity (id019).
 import test from 'node:test';
 import assert from 'node:assert/strict';

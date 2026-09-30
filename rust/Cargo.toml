@@ -1,0 +1,19 @@
+[package]
+name = "dopa-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Deterministic non-UI arithmetic and learning engine for Dopa Drill"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

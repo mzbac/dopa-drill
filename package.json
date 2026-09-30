@@ -1,0 +1,14 @@
+{
+  "name": "dopa-drill-english-ipad",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tools/browser-smoke.mjs",
+    "dev": "node tools/serve.mjs",
+    "build": "bash tools/build-wasm.sh && node tools/build-pwa.mjs && node tools/check-assets.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

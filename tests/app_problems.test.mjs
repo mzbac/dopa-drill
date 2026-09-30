@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Validates generated column-arithmetic problems for the public app.
 import test from 'node:test';
 import assert from 'node:assert/strict';

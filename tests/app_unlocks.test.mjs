@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Unlockable show (id041-id044).
 import test from 'node:test';
 import assert from 'node:assert/strict';

@@ -1,64 +1,62 @@
-# ドパドリル
+# Dopa Drill — English iPad Edition
 
-算数を1問解くたびに、演出と音楽がどんどん盛り上がっていく計算ドリルです。ブラウザだけで動きます。
+An unofficial, non-commercial English adaptation of [gear_machine’s Dopa Drill](https://github.com/grmchn/dopa-drill). The original cheerful math game, Dopakichi mascot, music, celebrations, 58 skills, skill tree, review, trophies and collections are preserved.
 
-マスコットの「ドパキチ」が入力した数字を運び、正解すると祝ってくれます。問題を進めるほど画面と音が増えていき、最後はお祭りのような状態になります。まちがえても勢いは落ちず、ゲームオーバーもありません。
+## Play on iPad
 
-## 特徴
+The GitHub Pages project URL is `https://mzbac.github.io/dopa-drill/` after Pages has been enabled and the deployment workflow succeeds.
 
-- 小学1〜6年の計算58スキル（学習指導要領に基づく）。足し算・ひき算・かけ算・わり算、筆算の途中入力、小数、分数、割合など
-- 「じぶんレベル」モード：実力チェックの結果から始め、習熟に合わせて次のスキルを解放します
-- 学年別モード、練習、復習、スキルツリー画面
-- 全問正解で100点。初回正解率が80%以上なら、制限時間付きのエクストラで100点を超える得点を狙えます
-- 音楽と効果音はすべてWeb Audio APIで合成しています（音声ファイルは使っていません）
-- スマートフォンの縦画面とPCに対応。PCでは数字キーとBackspaceで入力できます
-- 設定で動きの強さを調整できます。ミュートもあります
-- 記録はすべて端末内（localStorage）に保存し、外部には送信しません
+1. Open the game in Safari.
+2. Tap **Share → Add to Home Screen** for an app-style icon.
+3. Open it once while online. The **Play on iPad & about this game** panel says when the offline download is ready.
+4. Choose **My Level** for a skill check, a grade for a mixed round, or a skill to practice. Tap the number pad to fill the glowing box. Written arithmetic starts at the ones place; fractions ask for the denominator first.
 
-## 遊び方（ローカル）
+Portrait and landscape layouts support touch. A Home button pauses the round and asks before leaving; returning from another app pauses it too. Sound starts only after an interaction. Settings include sound, volume, reduced motion, round length and progress reset. The original grade groupings follow the original Japanese curriculum sequence, rather than a claim of alignment with a particular English-language school system.
 
-ビルドは不要です。`app/` を静的に配信するだけで動きます。
+Scores, skills and settings are stored in this browser’s localStorage, with no accounts, ads, analytics or score uploads. Safari and a Home Screen installation may use separate storage. Clearing website data removes progress. Browser storage may be evicted by the operating system. Ordinary website requests are still served by GitHub Pages.
 
-```bash
-python3 -m http.server 8000 -d app
+## What runs in Rust
+
+Calculation and non-UI game logic compile to WebAssembly. JavaScript handles the browser, touch input, English text, grids, animation, audio, and browser persistence. The app waits for the Rust engine before enabling play. See `rust/` and `app/js/math-core.js` for the ABI and source.
+
+WebAssembly is used as an implementation choice; this project does not claim that all work is faster than JavaScript. Per-call overhead and device/browser differences matter.
+
+## Run locally
+
+Node.js 20 or newer is needed for tests. No npm packages or network dependencies are required to play the checked-in browser app. Playwright is a development-only dependency for browser regression tests.
+
+```sh
+node tools/serve.mjs
+# Open http://localhost:4173/dopa-drill/
 ```
 
-ブラウザで `http://localhost:8000/` を開いてください。ES Modulesを使っているため、`file://` で直接開くと動きません。
+ES modules and WebAssembly require HTTP(S); opening `index.html` as a local file will not work.
 
-## テスト
+## Build and verify
 
-Node.js 20以上で実行します。
-
-```bash
+```sh
+rustup target add wasm32-unknown-unknown
+bash tools/build-wasm.sh
 node --test tests/*.test.mjs
+node tools/build-pwa.mjs
+node tools/check-assets.mjs
+npm ci
+npx playwright install chromium
+npm run test:browser
 ```
 
-## 構成
+Run `node tools/build-pwa.mjs` after changing any app asset. The generated service worker uses a content-hashed cache, stays within the `/dopa-drill/` scope, and waits for old windows to close before activating an update. Runtime assets are local and cached together, including the WebAssembly engine. The cache makes no request to third-party CDNs.
 
-| パス | 内容 |
-| --- | --- |
-| `app/` | ゲーム本体（依存ライブラリなしのES Modules） |
-| `docs/SPEC.md` | 仕様書 |
-| `docs/curriculum.md` | 学年別カリキュラムとスキルツリーの設計 |
-| `docs/dopakichi.svg` | ドパキチの造形の原典 |
-| `tests/` | 単体テスト |
-| `tools/build_fonts.sh` | フォントのサブセット再生成（画面の文言を追加したときに実行） |
+## GitHub Pages
 
-## ライセンス
+In **Settings → Pages → Build and deployment**, choose **GitHub Actions** once. Then push to `main` or run **Test and deploy English iPad game** from Actions. The workflow builds the Rust engine, runs correctness checks, creates the offline cache and publishes only `app/`.
 
-- ソースコード：MIT License
-- キャラクター「ドパキチ」、および「ドパドリル」の名称とロゴ：MITの対象外です。営利目的でなければ、二次創作に自由に使えます（下記）。
-- フォント（`app/fonts/`）：SIL Open Font License 1.1
+No personal access token is required. The deployment job has only `pages: write` and `id-token: write`; source checkout is read-only. Initial Pages setup must be completed by an administrator before the deployment can succeed.
 
-詳細は [LICENSE](LICENSE) を参照してください。
+## License and attribution
 
-### ドパキチ・ドパドリルの二次創作について
+Original source: Copyright © 2026 gear_machine, MIT License. Original revision: `fdacd5fc8322f251f92ddc07f13ae85ccb2263dd`.
 
-営利目的でなければ、連絡なしで自由に使えます。
+The **Dopa Drill name/logo and Dopakichi character are not MIT-licensed**. The original license allows non-commercial unofficial forks and forbids presenting them as official or using them as branding for another product. This is a non-commercial modified version of the same game. All original license terms and font notices are retained in [`LICENSE`](LICENSE) and `app/fonts/OFL-*.txt`. The user-facing game links the complete license too.
 
-- できること：ファンアート、漫画、小説、アニメーション、動画、SNSへの投稿、このゲームの非営利のフォークや改造版の公開
-- プレイ動画・配信：自由です。広告収益や投げ銭のあるプラットフォームでも構いません
-- 事前の許可が必要なこと：グッズや作品の販売、有料の製品・サービス・広告での利用などの商用利用。ほかの製品やサービスの名前・マスコット・ブランドとしての利用や、公式を名乗ること
-- 禁止：公序良俗に反する使い方、キャラクターや本プロジェクトの評判を傷つける使い方
-
-公開するときは、非公式であることが分かるようにしてください。LICENSEの英文と内容が異なる場合は、英文が優先します。
+The original Japanese README is preserved at `docs/README-original-ja.md`.

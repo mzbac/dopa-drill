@@ -1,3 +1,4 @@
+import './setup.mjs';
 // Lifetime statistics and growth comparisons (id033-).
 import test from 'node:test';
 import assert from 'node:assert/strict';

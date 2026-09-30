@@ -1,0 +1,92 @@
+[
+  {
+    "name": "skill orders",
+    "assertions": 2,
+    "hash": "511c9abdca754a9f4ca595102cc7221772f38656057771afa424ff6ed033f0cf"
+  },
+  {
+    "name": "answers 0-49",
+    "assertions": 310,
+    "hash": "c5557313cf684b9d1c35610e78660ccbd74c26d5f9e163273445c683e787b758"
+  },
+  {
+    "name": "answers 50-99",
+    "assertions": 305,
+    "hash": "a48abf0c30337d020fa578ea30367c65e01136e90f982ad419ba80b4be653164"
+  },
+  {
+    "name": "answers 100-149",
+    "assertions": 307,
+    "hash": "f4dc8e7d5ae10aa17f5d0ab3e3f7b4d7a3eb766ed4256e78ff6315543f958f60"
+  },
+  {
+    "name": "answers 150-199",
+    "assertions": 307,
+    "hash": "edc937f7c7b30b3dd52130632664efbed21a0be965c0d06afd63de737d0b607c"
+  },
+  {
+    "name": "answers 200-249",
+    "assertions": 307,
+    "hash": "d90b790cce7fa01387d7c5b459772dd5d323693d07ad241f95943de2c761078b"
+  },
+  {
+    "name": "answers 250-299",
+    "assertions": 305,
+    "hash": "36518a5ed79238e3834054bf5feca4254aad63d6a5a198223082d7fd18cc73d7"
+  },
+  {
+    "name": "answers 300-349",
+    "assertions": 306,
+    "hash": "3b5b151a5f4716410aec8bd55381dc04021f454043b241906481fca03cb8a5a8"
+  },
+  {
+    "name": "answers 350-399",
+    "assertions": 308,
+    "hash": "786292e6b4edacd8b079ab585843d4c166847cb85bc450fb67bd75effc430a51"
+  },
+  {
+    "name": "answers 400-449",
+    "assertions": 307,
+    "hash": "f95a3801818344ba9f6c6d7773c57b347760419a79fb84c05328c9506eb9eee1"
+  },
+  {
+    "name": "answers 450-499",
+    "assertions": 304,
+    "hash": "2f8f12354910673188421ce57ce57b9bcb7f203a652ec594304170b92d9ef160"
+  },
+  {
+    "name": "answers 500-549",
+    "assertions": 307,
+    "hash": "fd577fbcf48b2e8cb020c3ac79aa82b868d331e3bd339d77c6dbf231234c2695"
+  },
+  {
+    "name": "answers 550-599",
+    "assertions": 308,
+    "hash": "4d3457511c134f437b11dd2b21409feebe0d8bdb8ee521e33cefb85eb6123dad"
+  },
+  {
+    "name": "grade plans and repeating extras",
+    "assertions": 1830,
+    "hash": "d9281e7f9c40006d973ceb44fc767632cf3110d36dadf92dc7a2436476fff1ee"
+  },
+  {
+    "name": "level plans and random consumption",
+    "assertions": 260,
+    "hash": "daf4215844d3807fdf8edc045d00c6d9c50a4dc205874af79244528acc8c2c15"
+  },
+  {
+    "name": "placement grants and slips",
+    "assertions": 200,
+    "hash": "5a206b2fb5b8b5e94d854f137878e6ed35e13e8f1e4919f211a7cd4cc7800b6a"
+  },
+  {
+    "name": "lifetime statistics and history migration",
+    "assertions": 301,
+    "hash": "1b0cff9fc89e84b34ad2e6604c58d930989909b620e93da750f5a4e74d1497c2"
+  },
+  {
+    "name": "growth comparison and calendar arithmetic",
+    "assertions": 104,
+    "hash": "6af90ff1dcb11fdcc4e3499a77dd97361a99ad0d27987a74c1f5e89e461733f2"
+  }
+]
