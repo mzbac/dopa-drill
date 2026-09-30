@@ -1,0 +1,106 @@
+{
+  "measuredOn": "2026-09-30",
+  "beforeOutputBufferOptimization": {
+    "platform": "linux x64",
+    "node": "v24.19.0",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "wasmBytes": 498694,
+    "wasmGzipBytes": 158274,
+    "initMs": 4.087,
+    "method": "5 measured runs after warm-up, median wall time. Shared Linux host/Node, not an iPad. Values include the costs named in each label.",
+    "results": [
+      {
+        "label": "JavaScript upstream generation + grid layout",
+        "iterations": 29000,
+        "medianMs": 91.958,
+        "microsecondsPerOperation": 3.171
+      },
+      {
+        "label": "Rust/WASM generation + JSON bridge + JS grid layout",
+        "iterations": 29000,
+        "medianMs": 1514.739,
+        "microsecondsPerOperation": 52.232
+      },
+      {
+        "label": "JavaScript scoring curve",
+        "iterations": 500000,
+        "medianMs": 20.447,
+        "microsecondsPerOperation": 0.041
+      },
+      {
+        "label": "Rust/WASM scoring curve (raw numeric ABI)",
+        "iterations": 500000,
+        "medianMs": 51.862,
+        "microsecondsPerOperation": 0.104
+      },
+      {
+        "label": "Rust/WASM digit validation (bridge included)",
+        "iterations": 500000,
+        "medianMs": 39.811,
+        "microsecondsPerOperation": 0.08
+      },
+      {
+        "label": "Rust/WASM full daily quest planning",
+        "iterations": 10000,
+        "medianMs": 307.911,
+        "microsecondsPerOperation": 30.791
+      }
+    ],
+    "checksum": 8834527.111422123
+  },
+  "finalRustWasm": {
+    "platform": "linux x64",
+    "node": "v24.19.0",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "wasmBytes": 496891,
+    "wasmGzipBytes": 157730,
+    "initMs": 3.242,
+    "method": "5 measured runs after warm-up, median wall time. Shared Linux host/Node, not an iPad. Values include the costs named in each label.",
+    "results": [
+      {
+        "label": "JavaScript upstream generation + grid layout",
+        "iterations": 29000,
+        "medianMs": 141.97,
+        "microsecondsPerOperation": 4.896
+      },
+      {
+        "label": "Rust/WASM generation + JSON bridge + JS grid layout",
+        "iterations": 29000,
+        "medianMs": 843.203,
+        "microsecondsPerOperation": 29.076
+      },
+      {
+        "label": "JavaScript scoring curve",
+        "iterations": 500000,
+        "medianMs": 20.828,
+        "microsecondsPerOperation": 0.042
+      },
+      {
+        "label": "Rust/WASM scoring curve (raw numeric ABI)",
+        "iterations": 500000,
+        "medianMs": 48.803,
+        "microsecondsPerOperation": 0.098
+      },
+      {
+        "label": "Rust/WASM digit validation (bridge included)",
+        "iterations": 500000,
+        "medianMs": 34.345,
+        "microsecondsPerOperation": 0.069
+      },
+      {
+        "label": "Rust/WASM full daily quest planning",
+        "iterations": 10000,
+        "medianMs": 288.312,
+        "microsecondsPerOperation": 28.831
+      }
+    ],
+    "checksum": 8834527.111422123
+  },
+  "nativeRust": {
+    "backend": "native-rust-release",
+    "iterations": 29000,
+    "totalMs": 343.752,
+    "microsecondsPerRecipe": 11.854,
+    "serializedBytes": 7713621
+  }
+}
