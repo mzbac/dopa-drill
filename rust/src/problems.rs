@@ -83,19 +83,47 @@ fn zero_borrow(a: i64, b: i64) -> bool {
             && aa.as_bytes()[aa.len() - 1] < bb.as_bytes()[bb.len() - 1]
     })
 }
-fn horizontal(tokens: Value, title: &str, text: String, answer: String, help: String) -> Value {
-    json!({"kind":"h","tokens":tokens,"meta":{"title":title,"text":text,"answer":answer,"help":help}})
+serialized_struct!(pub Generated { seed: u32 => "seed", recipe: Recipe => "recipe" });
+serialized_struct!(pub Horizontal { kind: &'static str => "kind", tokens: Value => "tokens", meta: Metadata => "meta" });
+serialized_struct!(pub Metadata { title: String => "title", text: String => "text", answer: String => "answer", help: String => "help" });
+serialized_struct!(pub Column { kind: &'static str => "kind", a: i64 => "a", b: i64 => "b", pa: i64 => "pa", pb: i64 => "pb", model: crate::columns::Model => "model" });
+pub enum Recipe {
+    Horizontal(Horizontal),
+    Column(Column),
 }
-fn column(kind: &str, a: i64, b: i64, pa: i64, pb: i64) -> Value {
-    let mut out = json!({"kind":kind,"a":a,"b":b,"pa":pa,"pb":pb});
-    out["model"] = crate::columns::model(kind, a, b, pa as usize, pb as usize)
-        .expect("valid generated column operands");
-    out
+impl serde_core::Serialize for Recipe {
+    fn serialize<S: serde_core::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Horizontal(v) => v.serialize(serializer),
+            Self::Column(v) => v.serialize(serializer),
+        }
+    }
 }
-fn generated(recipe: Value, seed: u32) -> Value {
-    let mut out = json!({"seed":seed});
-    out["recipe"] = recipe;
-    out
+fn horizontal(tokens: Value, title: &str, text: String, answer: String, help: String) -> Recipe {
+    Recipe::Horizontal(Horizontal {
+        kind: "h",
+        tokens,
+        meta: Metadata {
+            title: title.into(),
+            text,
+            answer,
+            help,
+        },
+    })
+}
+fn column(kind: &'static str, a: i64, b: i64, pa: i64, pb: i64) -> Recipe {
+    Recipe::Column(Column {
+        kind,
+        a,
+        b,
+        pa,
+        pb,
+        model: crate::columns::typed_model(kind, a, b, pa as usize, pb as usize)
+            .expect("valid generated column operands"),
+    })
+}
+fn generated(recipe: Recipe, seed: u32) -> Value {
+    serde_json::to_value(Generated { seed, recipe }).expect("serializable recipe")
 }
 
 fn fraction(n: i64, d: i64, mixed: bool) -> (Value, String) {
@@ -124,6 +152,15 @@ pub fn generate(id: &str, seed: u32) -> Result<Value, String> {
         .iter()
         .find(|s| s["id"] == id)
         .ok_or_else(|| format!("unknown skill {id}"))?;
+    generate_skill(sk, seed).map(|out| serde_json::to_value(out).expect("serializable recipe"))
+}
+
+// The browser already has the curriculum index. Avoid a second linear ID scan.
+pub fn generate_index(index: usize, seed: u32) -> Result<Generated, String> {
+    let sk = skills().get(index).ok_or("unknown skill index")?;
+    generate_skill(sk, seed)
+}
+fn generate_skill(sk: &Value, seed: u32) -> Result<Generated, String> {
     let name = sk["gen"][0].as_str().unwrap();
     let params = &sk["gen"][1];
     let mut rng = Rng { state: seed };
@@ -132,10 +169,13 @@ pub fn generate(id: &str, seed: u32) -> Result<Value, String> {
     } else {
         generate_inner(name, params, &mut rng)?
     };
-    Ok(generated(recipe, rng.state))
+    Ok(Generated {
+        recipe,
+        seed: rng.state,
+    })
 }
 
-fn generate_inner(name: &str, p: &Value, r: &mut Rng) -> Result<Value, String> {
+fn generate_inner(name: &str, p: &Value, r: &mut Rng) -> Result<Recipe, String> {
     // Each loop is bounded. Rejections consume exactly the original JS draws.
     let limit = match name {
         "vsub" => 800,
@@ -614,7 +654,7 @@ fn generate_inner(name: &str, p: &Value, r: &mut Rng) -> Result<Value, String> {
     Err(format!("generation limit reached: {name}"))
 }
 
-fn fraction_problem(p: &Value, r: &mut Rng) -> Option<Value> {
+fn fraction_problem(p: &Value, r: &mut Rng) -> Option<Recipe> {
     let op = s(p, "op");
     if op == "reduce" {
         let d = r.int(2, 9);
@@ -797,7 +837,7 @@ fn fraction_problem(p: &Value, r: &mut Rng) -> Option<Value> {
     None
 }
 
-fn decimal_problem(p: &Value, r: &mut Rng) -> Result<Value, String> {
+fn decimal_problem(p: &Value, r: &mut Rng) -> Result<Recipe, String> {
     let op = s(p, "op");
     let add = if op == "addsub" {
         r.next_f64() < 0.5

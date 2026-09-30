@@ -11,7 +11,7 @@ import { Backdrop } from './bg.js';
 import * as store from './store.js';
 import { createGuide } from './guide.js';
 import { SKILLS, SKILL, LANES, DEPTH } from './skills.js';
-import { ORDER, emptyProgress, recordResult, stateOf, masteryRatio, starsOf, nextStar, STAR_MAX, pickCapsule, useCapsule, rustyOf, gradePlan, levelPlan, reviewPlan, problemFor, frontier, isUnlocked, relockTargets, relockSkill, TREE_LAYOUT } from './session.js';
+import { ORDER, emptyProgress, recordResult, stateOf, skillViews, starsOf, nextStar, STAR_MAX, pickCapsule, useCapsule, rustyOf, gradePlan, levelPlan, reviewPlan, problemFor, frontier, isUnlocked, relockTargets, relockSkill, TREE_LAYOUT } from './session.js';
 import * as growth from './growth.js';
 import * as qs from './quests.js';
 import * as tr from './trophies.js';
@@ -138,10 +138,11 @@ const recording = () => !S.demo && !params.has('skill') && !(S.plan && S.plan.le
 
 // ---------------------------------------------------------------- daily quests (id035)
 const pickedCount = () => Number(($('.pick [aria-checked="true"]') || {}).dataset?.count || 10);
-function questCtx() {
+function questCtx(views = null) {
   const prog = progress();
   const st = stats();
-  const states = SKILLS.map((x) => stateOf(prog, x.id));
+  const snapshot = views || skillViews(prog);
+  const states = SKILLS.map((x) => snapshot[x.id].state);
   return {
     count: pickedCount(), review: prog.review.length, placed: !!prog.placed,
     hasNew: states.includes('new'), hasLearning: states.includes('learning') || states.includes('new'),
@@ -149,10 +150,9 @@ function questCtx() {
     avgCells: st.cells && st.problems ? st.cells / st.problems : 2,
     rusty: rustyOf(prog),
     polishWeek: ((store.load().quests || {}).polishDays || []).filter((d) => growth.daysBetween(d, store.dayKey()) < 7).length,
-    prog, now: Date.now(),
   };
 }
-const quests = () => { const st = store.load(); if (!st.quests) st.quests = {}; if (qs.ensureDay(st.quests, store.dayKey(), questCtx())) store.save(); return st.quests; };
+const quests = (views = null) => { const st = store.load(); if (!st.quests) st.quests = {}; if (qs.ensureDay(st.quests, store.dayKey(), questCtx(views))) store.save(); return st.quests; };
 function questNote(ev) {
   if (!recording()) return;
   const q = quests();
@@ -175,8 +175,8 @@ function questRewardText(q) {
   if (q.rewarded) return '<b class="qdone">Complete!</b>';
   return `Complete all: <i class="qham">${HAMMER_SVG}</i>+1`;
 }
-function renderQuests() {
-  const q = quests();
+function renderQuests(views = null) {
+  const q = quests(views);
   $('#quest-list').innerHTML = questRows(q.list);
   $('#quest-reward').innerHTML = questRewardText(q);
   $('#quests').classList.toggle('complete', !!q.rewarded);
@@ -1412,7 +1412,10 @@ function renderSkillNews(el) {
     ...S.newMastered.map((id) => `<p class="mastered">Mastered! ${SKILL[id].name}</p>`),
     ...S.newUnlocks.map((id) => `<p>Unlocked! ${SKILL[id].name}</p>`),
   ];
-  if (S.plan.placement) items.unshift(`<p>Skill check complete · ${SKILLS.filter((x) => stateOf(progress(), x.id) === 'mastered').length} skills cleared</p>`);
+  if (S.plan.placement) {
+    const views = skillViews(progress());
+    items.unshift(`<p>Skill check complete · ${SKILLS.filter((x) => views[x.id].state === 'mastered').length} skills cleared</p>`);
+  }
   el.innerHTML = items.slice(0, 5).join('');
 }
 function setReviewButton(btn, n) {
@@ -1426,16 +1429,17 @@ function startReview() {
 }
 function refreshTitle() {
   const prog = progress();
+  const views = skillViews(prog);
   const n = prog.review.length;
   $('#start-review').hidden = !n;
   $('#review-count').textContent = n;
   $('#level-sub').textContent = prog.placed ? `Next: ${SKILL[frontier(prog)[0] || ORDER[ORDER.length - 1]].name}` : 'Start with a quick skill check';
-  const done = SKILLS.filter((x) => stateOf(prog, x.id) === 'mastered').length;
+  const done = SKILLS.filter((x) => views[x.id].state === 'mastered').length;
   $('#tree-badge').textContent = `${done}/${SKILLS.length}`;
-  renderQuests();
+  renderQuests(views);
   refreshTrophyBadge();
   const got = gotTrophies();
-  $('#collect-badge').textContent = `${ul.ITEMS.filter((it) => ul.isUnlocked(it, got)).length}/${ul.ITEMS.length}`;
+  $('#collect-badge').textContent = `${ul.collectionCount(got)}/${ul.ITEMS.length}`;
 }
 
 function toTitle() {
@@ -1646,6 +1650,7 @@ function treeLinks(pos, colW, nodeW) {
 
 function renderTree(justIds = [], starIds = []) {
   const prog = progress();
+  const views = skillViews(prog);
   const tree = $('#tree');
   // Columns never get narrower than MIN_COL; narrow screens scroll sideways.
   const W = $('#tree-scroll').clientWidth - 12 || 360;
@@ -1662,26 +1667,26 @@ function renderTree(justIds = [], starIds = []) {
   for (const sk of SKILLS) pos[sk.id] = { x: TREE.col[sk.id] * colW + GAP / 2, y: TREE.row[sk.id] * ROW_H + 14 };
   let links = '';
   for (const l of treeLinks(pos, colW, nodeW)) {
-    const on = stateOf(prog, l.from) === 'mastered';
+    const on = views[l.from].state === 'mastered';
     const grow = justIds.includes(l.to);
     links += `<path class="${on ? 'on' : ''}${grow ? ' grow' : ''}" data-to="${l.to}" d="${l.d}"/>`;
   }
   $('#tree-links').innerHTML = links;
   for (const sk of SKILLS) {
-    const st = stateOf(prog, sk.id);
+    const st = views[sk.id].state;
     const b = document.createElement('button');
     b.type = 'button';
-    const stars = starsOf(prog, sk.id);
+    const stars = views[sk.id].stars;
     const rusty = rustSet.has(sk.id);
     b.className = `node ${st}${justIds.includes(sk.id) ? ' just' : ''}${starIds.includes(sk.id) ? ' star-up' : ''}${rusty ? ' rusty' : ''}`;
     b.dataset.id = sk.id;
-    b.style.cssText = `left:${pos[sk.id].x}px;top:${pos[sk.id].y}px;width:${nodeW}px;height:${NODE_H}px;--p:${masteryRatio(prog, sk.id)}`;
+    b.style.cssText = `left:${pos[sk.id].x}px;top:${pos[sk.id].y}px;width:${nodeW}px;height:${NODE_H}px;--p:${views[sk.id].ratio}`;
     b.innerHTML = `<i class="hold"></i><span class="g">Grade ${sk.grade}</span><span>${sk.name}</span>${st === 'learning' ? '<i class="ring"></i>' : ''}${st === 'mastered' ? `<i class="stars s${stars}">${starRow(stars)}</i>` : ''}${rusty ? '<i class="rust" aria-hidden="true">Refresh</i>' : ''}`;
     b.setAttribute('aria-label', `${sk.name} ${{ locked: 'Locked', new: 'New', learning: 'Practicing', mastered: `Mastered, ${stars} stars${rusty ? ' needs a refresh' : ''}` }[st]}`);
     tree.appendChild(b);
   }
-  $('#tree-count').textContent = `${SKILLS.filter((x) => stateOf(prog, x.id) === 'mastered').length} / ${SKILLS.length}`;
-  $('#tree-stars').innerHTML = `${starRow(1, 1)}<b>${SKILLS.reduce((a, x) => a + starsOf(prog, x.id), 0)}</b> / ${SKILLS.length * STAR_MAX}`;
+  $('#tree-count').textContent = `${SKILLS.filter((x) => views[x.id].state === 'mastered').length} / ${SKILLS.length}`;
+  $('#tree-stars').innerHTML = `${starRow(1, 1)}<b>${SKILLS.reduce((a, x) => a + views[x.id].stars, 0)}</b> / ${SKILLS.length * STAR_MAX}`;
   // Animate new branches growing.
   if (!S.reduced) tree.querySelectorAll('.tree-links path.grow').forEach((path) => {
     const L = path.getTotalLength();
@@ -2200,7 +2205,7 @@ function renderCollection() {
       const tro = it.trophy && tr.TROPHY[it.trophy];
       return `<button type="button" class="co-item${own ? '' : ' locked'}${on ? ' on' : ''}" data-id="${it.id}"${own ? '' : ` aria-label="Locked. Earn trophy ${tro ? tro.name : ''}"`}><span class="co-th">${itemThumb(it)}</span><span class="co-name">${own ? it.name : '？？？'}</span>${own ? '<small>&nbsp;</small>' : `<small class="co-lock">Trophy: ${tro ? tro.name : ''}</small>`}</button>`;
     }).join('');
-  const all = ul.ITEMS.length; const own = ul.ITEMS.filter((it) => ul.isUnlocked(it, got)).length;
+  const all = ul.ITEMS.length; const own = ul.collectionCount(got);
   $('#collect-count').textContent = `${own} / ${all}`;
   $('#co-now').textContent = `${catName(co.cat)}：${auto ? 'Surprise me' : (ul.ITEM[eq[co.cat]] || {}).name || ''}`;
 }

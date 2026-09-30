@@ -1,0 +1,141 @@
+{
+  "measuredAt": "2026-09-30T08:08:00.577Z",
+  "baselineCommit": "467be6948812ffbe21f8cf374bcbfbea7d1008c8",
+  "platform": "linux x64",
+  "node": "v24.19.0",
+  "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+  "method": "Same Node process, separate WASM instances and JS modules, identical seeds and state. Three full warm-up passes then nine alternating-order timed samples. Fresh-process initialization separately measured seven times, excludes file I/O and network. Shared Linux host, not an iPad.",
+  "engines": [
+    {
+      "label": "baseline",
+      "wasmSha256": "2ee40a73dd2a9faa061b685648a3e1533f1367789c62cb6a3c4bcfbba50be9fe",
+      "wasmBytes": 496891,
+      "wasmGzipBytes": 157730,
+      "coldInitMs": [
+        2.499994000000001,
+        5.125816,
+        2.765478999999999,
+        3.353334999999987,
+        6.443607999999998,
+        5.932703000000004,
+        3.03276799999999
+      ],
+      "coldInitMedianMs": 3.353334999999987
+    },
+    {
+      "label": "optimized",
+      "wasmSha256": "98a7f5be14a4462e680c72b3eeffcf4297126323c0cb3d6dd2b42692ced14970",
+      "wasmBytes": 506458,
+      "wasmGzipBytes": 159783,
+      "coldInitMs": [
+        2.551335999999992,
+        3.247924999999995,
+        3.3542210000000097,
+        4.2020709999999895,
+        6.138173000000009,
+        3.384796999999992,
+        6.373861000000005
+      ],
+      "coldInitMedianMs": 3.384796999999992
+    }
+  ],
+  "results": [
+    {
+      "label": "Full question: Rust generation, bridge and English JS grid",
+      "iterationsPerRun": 11600,
+      "runs": 9,
+      "baselineMicroseconds": 29.08186818965517,
+      "optimizedMicroseconds": 15.305640086206918,
+      "reductionPercent": 47.37050595789665,
+      "samplesMicroseconds": [
+        [
+          31.559924827586197,
+          27.287855086206896,
+          32.06196844827586,
+          29.401369137931084,
+          29.08186818965517,
+          28.400189568965523,
+          30.094639224137936,
+          23.777616551724115,
+          27.415609396551755
+        ],
+        [
+          15.305640086206918,
+          16.48398887931029,
+          14.05045405172414,
+          16.21207215517235,
+          13.743642672413818,
+          15.411145517241415,
+          14.07338137931039,
+          13.008037241379261,
+          15.723561293103431
+        ]
+      ]
+    },
+    {
+      "label": "Complete daily-quest planning and bridge",
+      "iterationsPerRun": 4000,
+      "runs": 9,
+      "baselineMicroseconds": 24.70662674999994,
+      "optimizedMicroseconds": 23.277136500000324,
+      "reductionPercent": 5.785857634327273,
+      "samplesMicroseconds": [
+        [
+          24.444194000000152,
+          24.051711999999952,
+          24.860514500000136,
+          24.288591500000166,
+          24.298061750000215,
+          24.70662674999994,
+          30.126243749999958,
+          26.04651075000038,
+          27.766899749999993
+        ],
+        [
+          26.486253999999917,
+          24.995546999999988,
+          22.932341499999893,
+          24.50905449999982,
+          22.326782000000094,
+          23.277136500000324,
+          22.07081100000005,
+          25.729673249999905,
+          22.75608000000011
+        ]
+      ]
+    },
+    {
+      "label": "All 58 skill views: state, stars and mastery ratio",
+      "iterationsPerRun": 500,
+      "runs": 9,
+      "baselineMicroseconds": 1680.1652219999996,
+      "optimizedMicroseconds": 362.4139720000021,
+      "reductionPercent": 78.42986110802845,
+      "samplesMicroseconds": [
+        [
+          1680.1652219999996,
+          1713.8813320000008,
+          1660.7720899999983,
+          1720.4258499999996,
+          1660.9004920000004,
+          1679.9852420000025,
+          1668.8455119999999,
+          1766.6769819999972,
+          1720.6177059999973
+        ],
+        [
+          365.9262899999995,
+          329.62009200000097,
+          383.87875400000485,
+          331.3840080000009,
+          375.01264999999694,
+          337.65594399999827,
+          366.44578799999726,
+          325.71242599999823,
+          362.4139720000021
+        ]
+      ]
+    }
+  ],
+  "checksum": 3064751.9999988824
+}

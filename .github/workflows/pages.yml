@@ -21,6 +21,8 @@ jobs:
         run: |
           rustup target add wasm32-unknown-unknown
           bash tools/build-wasm.sh
+      - name: Verify native Rust engine
+        run: cd rust && cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked
       - name: Run correctness tests
         run: node --test tests/*.test.mjs
       - name: Prepare offline cache
@@ -33,6 +35,19 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Test touch gameplay and offline mode
         run: npm run test:browser
+      - name: Prepare performance baseline
+        run: |
+          git fetch --no-tags --depth=1 origin 467be6948812ffbe21f8cf374bcbfbea7d1008c8
+          mkdir -p "$RUNNER_TEMP/dopa-perf-baseline"
+          git archive 467be6948812ffbe21f8cf374bcbfbea7d1008c8 | tar -x -C "$RUNNER_TEMP/dopa-perf-baseline"
+      - name: Compare browser performance
+        run: node tools/bench-browser.mjs "$RUNNER_TEMP/dopa-perf-baseline"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-performance
+          path: qa/browser-performance.json
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

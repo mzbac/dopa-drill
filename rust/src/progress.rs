@@ -174,6 +174,32 @@ fn state_of(prog: &Value, id: &str) -> &'static str {
         "locked"
     }
 }
+fn mastery_ratio(prog: &Value, id: &str) -> f64 {
+    let r = &prog["skills"][id];
+    if truthy(&r["mastered"]) {
+        1.0
+    } else {
+        (arr(&r["hist"]).iter().map(num).sum::<f64>() / MASTERY_NEED).min(0.95)
+    }
+}
+
+// One fresh, read-only snapshot for a complete skill-tree/title render. Reuse
+// the same rule helpers as the individual queries; no state is cached here.
+fn skill_views(prog: &Value) -> Value {
+    let mut views = Map::with_capacity(catalog().ids.len());
+    for id in &catalog().ids {
+        views.insert(
+            id.clone(),
+            json!({
+                "state": state_of(prog, id),
+                "stars": numeric(stars_of(prog, id)),
+                "ratio": numeric(mastery_ratio(prog, id)),
+            }),
+        );
+    }
+    Value::Object(views)
+}
+
 fn master_ancestors(prog: &mut Value, id: &str, at: f64) {
     let c = catalog();
     let Some(&i) = c.index.get(id) else {
@@ -890,14 +916,8 @@ pub fn dispatch(op: &str, args: &Value) -> Option<Value> {
             );
             json!({"prog":p,"result":result})
         }
-        "masteryRatio" => {
-            let r = &prog["skills"][id];
-            numeric(if truthy(&r["mastered"]) {
-                1.0
-            } else {
-                (arr(&r["hist"]).iter().map(num).sum::<f64>() / MASTERY_NEED).min(0.95)
-            })
-        }
+        "masteryRatio" => numeric(mastery_ratio(prog, id)),
+        "skillViews" => skill_views(prog),
         "rustyOf" => json!(rusty(prog, num(&args["now"]))),
         "starsOf" => numeric(stars_of(prog, id)),
         "updateStars" => {
@@ -1348,5 +1368,53 @@ mod tests {
         );
         assert_eq!(unused["prog"], p);
         assert_eq!(unused["result"], false);
+    }
+    #[test]
+    fn batch_skill_views_match_every_individual_query() {
+        for scenario in 0..24 {
+            let mut prog = empty_progress();
+            for (i, id) in catalog().ids.iter().enumerate() {
+                if (i + scenario) % 4 == 0 {
+                    continue;
+                }
+                prog["skills"][id] = json!({
+                    "mastered": (i + scenario) % 3 == 0,
+                    "n": (i + scenario) % 8,
+                    "hist": (0..6).map(|j| u8::from((i + scenario + j) % 3 != 0)).collect::<Vec<_>>(),
+                    "stars": (i + scenario) % 7,
+                });
+            }
+            prog["skills"]["removed-skill"] = json!({"mastered":true,"stars":5});
+            let before = prog.clone();
+            let views = skill_views(&prog);
+            assert_eq!(views.as_object().unwrap().len(), 58);
+            for id in &catalog().ids {
+                let args = json!({"prog":prog,"id":id});
+                assert_eq!(views[id]["state"], dispatch("stateOf", &args).unwrap());
+                assert_eq!(views[id]["stars"], dispatch("starsOf", &args).unwrap());
+                assert_eq!(views[id]["ratio"], dispatch("masteryRatio", &args).unwrap());
+            }
+            assert_eq!(prog, before);
+        }
+    }
+
+    #[test]
+    fn batch_skill_views_are_fresh_and_previous_snapshots_stay_unchanged() {
+        let mut prog = empty_progress();
+        let before = skill_views(&prog);
+        assert_eq!(
+            before["g1-add-nc"],
+            json!({"state":"new","stars":0,"ratio":0})
+        );
+        master_ancestors(&mut prog, "g1-add-nc", 1.0);
+        let after = skill_views(&prog);
+        assert_eq!(
+            after["g1-add-nc"],
+            json!({"state":"mastered","stars":1,"ratio":1})
+        );
+        assert_eq!(after["g1-sub-nb"]["state"], "new");
+        assert_eq!(before["g1-sub-nb"]["state"], "locked");
+        assert_eq!(before["g1-add-nc"]["state"], "new");
+        assert!(!before.as_object().unwrap().contains_key("removed-skill"));
     }
 }

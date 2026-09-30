@@ -91,6 +91,11 @@ addItems([
 
 // Cosmetic eligibility and random selection are non-UI rules in Rust.
 export const isUnlocked = (item,got={}) => coreCall('isItemUnlocked',{item,got});
+// One eligibility batch for collection totals; labels and asset IDs stay in JS.
+// The count needs neither category-completion work nor display metadata.
+export const collectionCount = (got={}) => coreCall('collectionMetrics',{
+  got,items:ITEMS.map(({base,trophy})=>({base,trophy})),
+}).itemsOwned;
 export const unlockedIn = (cat,got) => coreCall('unlockedIn',{cat,got,items:ITEMS}).map(item=>ITEM[item.id]);
 export const defaultEquip = () => coreCall('defaultEquip',{cats:CATS});
 export function pickLook(equip={},got={},rng=Math.random) {

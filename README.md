@@ -19,7 +19,7 @@ Scores, skills and settings are stored in this browser’s localStorage, with no
 
 Calculation and non-UI game logic compile to WebAssembly. JavaScript handles the browser, touch input, English text, grids, animation, audio, and browser persistence. The app waits for the Rust engine before enabling play. See [the engine boundary and build notes](docs/RUST-ENGINE.md), `rust/`, and `app/js/math-core.js` for the ABI and source.
 
-WebAssembly is used as an implementation choice; this project does not claim that all work is faster than JavaScript. Per-call overhead and device/browser differences matter. [Reproducible benchmark results](docs/BENCHMARKS.md) show the costs, including the bridge.
+WebAssembly is used as an implementation choice; this project does not claim that all work is faster than JavaScript. The current optimization cuts full-question time by about 47% and a complete skill summary by about 78% against the preceding Rust build in paired Node measurements. Per-call overhead and device/browser differences still matter; these are not physical iPad measurements. [Reproducible benchmark results](docs/BENCHMARKS.md) show the costs, including the bridge.
 
 ## Run locally
 

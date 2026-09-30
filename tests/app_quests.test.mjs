@@ -82,3 +82,15 @@ test('polish quest: only with a rusty skill, now and then, at most twice a week 
   ensureDay(s2, d, ctx);
   assert.deepEqual(s2.polishDays, [d]);
 });
+
+test('quest summaries preserve planning without copying unused saved progress', () => {
+  const compact={...base,rusty:['g2-kuku25'],polishWeek:0};
+  const expanded={...compact,now:1750000000000,prog:{skills:{sample:{times:Array(30).fill({f:true,t:1000,c:3}),first:[{problem:{cells:Array(40).fill({text:'7',kind:'input'})}}]}}}};
+  for(const day of days) {
+    assert.deepEqual(dailyQuests(day,compact),dailyQuests(day,expanded));
+    const a={},b={};
+    assert.equal(ensureDay(a,day,compact),ensureDay(b,day,expanded));
+    assert.deepEqual(a,b);
+    assert.equal(questMinutes(a.list,compact),questMinutes(b.list,expanded));
+  }
+});

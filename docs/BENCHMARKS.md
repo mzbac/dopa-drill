@@ -1,44 +1,58 @@
-# Engine benchmark: measured results, no speedup claim
+# Engine performance: measured before and after
 
-Measured on 2026-09-30, Linux x64, Node 24.19.0, Intel Xeon Platinum 8573C. This is a shared development host, **not an iPad**. Browser rendering, Safari behavior, touch latency and network download were not benchmarked here.
+Measured on 2026-09-30, Linux x64, Node 24.19.0, Intel Xeon Platinum 8573C. This is a shared development host, **not an iPad**. The baseline is the complete deployed Rust implementation at commit `467be6948812ffbe21f8cf374bcbfbea7d1008c8`, including every generator, numeric column model and game rule. Both sides use identical English grid builders and seeded workloads. No calculation moved back to JavaScript.
 
-## Final implementation
+## Paired warm-throughput results
 
-Five timed runs after warm-up; values below are median wall-clock microseconds per operation. Question runs contain 29,000 problems cycling through all 58 skills. Tiny numerical operations use 500,000 iterations per run.
+Separate old/new WASM instances and JS modules run in the same Node process. Each receives the same seed or populated progress state. Three complete warm-up passes precede nine timed runs; the order alternates old/new then new/old. Values below are median wall-clock time, including all costs named in the row.
 
-| Work measured | Time |
-|---|---:|
-| Original JavaScript generation + original grid layout | 4.896 µs/question |
-| Final Rust/WASM generation, numeric column model, JSON bridge + English JS grid layout | 29.076 µs/question |
-| Original JavaScript scoring curve | 0.042 µs/call |
-| Rust/WASM scoring curve, raw numerical ABI | 0.098 µs/call |
-| Rust/WASM digit validation including bridge | 0.069 µs/call |
-| Rust/WASM complete daily-quest planning | 28.831 µs/plan |
+| Work measured | Previous Rust build | Optimized Rust build | Reduction |
+|---|---:|---:|---:|
+| Full question: Rust generation, bridge and English JS grid | 29.082 µs/question | 15.306 µs/question | 47.4% |
+| All 58 skill states, stars and mastery ratios | 1.680 ms/summary | 0.362 ms/summary | 78.4% |
+| Complete daily-quest planning and bridge | 24.707 µs/plan | 23.277 µs/plan | 5.8% |
 
-**The Rust port is slower than the original JavaScript in these measured end-to-end workloads.** Its roughly 0.029 ms/question cost is small on this machine, but that does not establish iPad performance. Native Rust's recipe construction plus JSON serialization measured 11.854 µs/recipe; it excludes JS layout and is not evidence of browser speed.
+Question runs cycle through all 58 skills, 11,600 questions per sample. Skill-summary runs contain 500 complete summaries per sample; quest runs contain 4,000 plans. Raw samples, artifact hashes and exact methodology are in [performance-results.json](performance-results.json). The quest samples overlap substantially; treat that small difference as inconclusive, rather than a reliable gameplay gain.
 
-The final WASM file is 496,891 bytes (157,730 bytes with gzip). Instantiating already-loaded bytes measured 3.242 ms in Node; that excludes downloading them.
+This does **not** mean the whole game is 47% faster. It measures question preparation. UI rendering, audio, animation and deliberate inter-question pauses are separate. The full Rust path remains slower than the earlier upstream-JavaScript generation benchmark, which measured about 4.9 µs/question and has different presentation allocation sizes. Rust is an implementation choice, not an automatic speed advantage.
 
-## Overhead reductions
+## What changed
 
-The final port returns an entire question, including all carry/borrow/partial-product/long-division values, in one ABI call. Score/digit APIs use numerical exports. Skill queries send only relevant fields; trophy metrics are batched. The output buffer is reused and recipe/result wrappers move values rather than copying complete JSON trees.
+Initial profiling found approximately 16 µs/question in Rust generation/serialization, 24 µs including the bridge, and 1.4 µs in JS layout alone. Those separate profiling samples locate the bottleneck; they are not subtraction-compatible measurements or the final paired comparison.
 
-Before that final buffer/copy reduction, the same full-column Rust/WASM path measured 52.232 µs/question; afterward it measured 29.076 µs/question. These are separate runs on a shared host, so treat the difference as directional evidence rather than a stable percentage gain. The original-JS baseline also varied between runs (3.171–4.896 µs/question). Neither Rust measurement beat JavaScript.
+- Typed question/column serializers avoid allocating JSON maps and field-name strings for every answer digit; the ten digit strings are shared
+- The generation ABI uses the supplied curriculum index directly instead of searching all skill IDs again
+- Input JSON is encoded straight into reusable WASM memory, avoiding a temporary byte array, copy and allocation/free pair
+- One fresh skill snapshot replaces the skill tree's 364 individual state/star/ratio calls; its separate rust/retention query remains
+- Title and collection totals batch cosmetic eligibility checks
+- Quest context sends the needed summaries, omitting unused copies of saved skill histories and question grids
+- Browser initialization uses streaming compilation on WASM-MIME hosts, while preserving byte loading on generic-MIME servers
 
-The baseline retains the original Japanese presentation, while the port uses English strings and horizontal layouts. Numerical problems and input sequences match through deterministic fixtures, but complete presentation allocation sizes are not identical.
+All 58 generators, carry/borrow/partial-product/long-division models, scoring, mastery, adaptive planning, quests and rewards still run in Rust. A further 29,000 deterministic fixtures compare complete recipes and RNG state with the deployed pre-optimization engine, on top of the existing upstream arithmetic and progress/reward parity suites.
+
+## Initialization and size
+
+Fresh-process Node initialization was measured seven times for each artifact, with bytes loaded before timing. Median compile/instantiate time was **3.35 ms before** and **3.38 ms after**. Samples overlap widely: there is no demonstrated cold-start improvement here. This excludes downloading and browser page startup.
+
+The WASM file increased from 496,891 to 506,458 bytes; gzip size increased from 157,730 to 159,783 bytes, about 2 KB. The size-optimized release profile is retained. A speed-optimized compiler-profile experiment enlarged the artifact and was not selected.
+
+## Browser measurements and correctness
+
+`tools/bench-browser.mjs` measures baseline and optimized apps with the same Chromium runner and seeded saved state. Its raw JSON and Actions summary distinguish browser startup, synchronous event-handler work and waiting for a rendered frame. Local HTTP and Chromium touch emulation are not measurements of GitHub Pages download speed, physical iPad input latency, or Safari.
+
+The publication workflow runs the complete touch/gameplay/replay/offline regression before deployment. This development container cannot launch Chromium because its sandbox denies a required socket; browser tests run in GitHub Actions. Do not treat unrun browser stages as passed. Re-measure on a physical target iPad before making an iPad-specific performance claim.
 
 ## Reproduce
 
+Create an untouched baseline checkout or extract the baseline commit outside the working checkout, then run:
+
 ```sh
 bash tools/build-wasm.sh
-node tools/bench-core.mjs results.json
-(cd rust && cargo run --release --example bench)
+node --test tests/*.test.mjs
+node tools/bench-performance.mjs /path/to/baseline results.json
+node tools/bench-browser.mjs /path/to/baseline browser-results.json
 ```
 
-For a different compatible WASM artifact:
+Both scripts retain raw samples and intentionally have no speed pass/fail thresholds. Shared CPU load and browser scheduling can move absolute timings. The benchmark input is the complete baseline app, not an old WASM artifact paired with a new, incompatible bridge.
 
-```sh
-DOPA_WASM_PATH=/absolute/path/to/dopa_core.wasm node tools/bench-core.mjs
-```
-
-See [raw results](benchmark-results.json) for counts, hardware, initialization times and both measured runs. Tests should gate correctness; these timings intentionally have no pass/fail thresholds. Re-measure on a physical target iPad before claiming a performance benefit.
+For the older upstream comparison and numerical microbenchmarks, `node tools/bench-core.mjs` remains available. [Historical results](benchmark-results.json) preserve the earlier unpaired measurements and their limitations; they are not the current before/after baseline.

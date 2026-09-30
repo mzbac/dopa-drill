@@ -9,6 +9,7 @@ description = "Deterministic non-UI arithmetic and learning engine for Dopa Dril
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+serde_core = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 
 [profile.release]

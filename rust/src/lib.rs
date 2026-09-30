@@ -2,6 +2,21 @@
 //! clock, storage or network access. The host supplies seeds and timestamps.
 use serde_json::Value;
 use std::sync::{Mutex, OnceLock};
+// Small explicit serializers keep field names/schema stable without constructing
+// serde_json maps or adding a proc-macro toolchain to the engine build.
+macro_rules! serialized_struct {
+    ($vis:vis $name:ident { $($field:ident: $ty:ty => $key:literal),* $(,)? }) => {
+        $vis struct $name { $(pub $field: $ty),* }
+        impl serde_core::Serialize for $name {
+            fn serialize<S: serde_core::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                use serde_core::ser::SerializeStruct;
+                let mut out = serializer.serialize_struct(stringify!($name), [$(stringify!($field)),*].len())?;
+                $(out.serialize_field($key, &self.$field)?;)*
+                out.end()
+            }
+        }
+    };
+}
 pub mod calendar;
 pub mod columns;
 pub mod problems;
@@ -125,26 +140,39 @@ pub fn dispatch(op: &str, args: &Value) -> Result<Value, String> {
 }
 
 static OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
-fn put_result(result: Result<Value, String>) -> *const u8 {
-    let mut response = serde_json::Map::new();
-    match result {
-        Ok(value) => {
-            response.insert("ok".into(), Value::Bool(true));
-            response.insert("value".into(), value);
-        }
-        Err(error) => {
-            response.insert("ok".into(), Value::Bool(false));
-            response.insert("error".into(), Value::String(error));
-        }
-    }
+fn put_result<T: serde_core::Serialize>(result: Result<T, String>) -> *const u8 {
     let mut output = OUTPUT.lock().expect("single host call");
     output.clear();
-    serde_json::to_writer(&mut *output, &response).expect("JSON output");
+    match result {
+        Ok(value) => {
+            output.extend_from_slice(b"{\"ok\":true,\"value\":");
+            serde_json::to_writer(&mut *output, &value).expect("JSON output");
+        }
+        Err(error) => {
+            output.extend_from_slice(b"{\"ok\":false,\"error\":");
+            serde_json::to_writer(&mut *output, &error).expect("JSON output");
+        }
+    }
+    output.push(b'}');
     output.as_ptr()
 }
 #[no_mangle]
 pub extern "C" fn core_output_len() -> usize {
     OUTPUT.lock().expect("single host call").len()
+}
+// Input and output are separate reusable buffers. The synchronous host finishes
+// each call before reusing either one; no borrowed input escapes core_call.
+static INPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+#[no_mangle]
+pub extern "C" fn core_input_reserve(len: usize) -> *mut u8 {
+    if len > 12_000_000 {
+        return std::ptr::null_mut();
+    }
+    let mut input = INPUT.lock().expect("single host call");
+    if input.len() < len {
+        input.resize(len, 0);
+    }
+    input.as_mut_ptr()
 }
 #[no_mangle]
 pub extern "C" fn core_alloc(len: usize) -> *mut u8 {
@@ -163,7 +191,7 @@ pub unsafe extern "C" fn core_dealloc(ptr: *mut u8, len: usize) {
 #[no_mangle]
 pub unsafe extern "C" fn core_call(ptr: *const u8, len: usize) -> *const u8 {
     if len > 4_000_000 {
-        return put_result(Err("request too large".into()));
+        return put_result::<Value>(Err("request too large".into()));
     }
     let request = serde_json::from_slice::<Value>(std::slice::from_raw_parts(ptr, len));
     put_result(
@@ -174,11 +202,7 @@ pub unsafe extern "C" fn core_call(ptr: *const u8, len: usize) -> *const u8 {
 }
 #[no_mangle]
 pub extern "C" fn core_generate(skill_index: usize, seed: u32) -> *const u8 {
-    let id = skills().get(skill_index).and_then(|s| s["id"].as_str());
-    put_result(
-        id.ok_or_else(|| "unknown skill index".into())
-            .and_then(|id| problems::generate(id, seed)),
-    )
+    put_result(problems::generate_index(skill_index, seed))
 }
 
 #[cfg(test)]

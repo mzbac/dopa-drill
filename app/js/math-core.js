@@ -3,6 +3,8 @@
 let wasm = null;
 let pending = null;
 let lastError = null;
+let inputPtr = 0;
+let inputCapacity = 0;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -22,8 +24,12 @@ export async function initCore(bytes = null) {
       else {
         const response = await fetch(new URL('../wasm/dopa_core.wasm', import.meta.url));
         if (!response.ok) throw new Error(`Math engine download failed (${response.status})`);
-        // A byte-buffer instantiation also works on hosts serving a generic MIME.
-        result = await WebAssembly.instantiate(await response.arrayBuffer(), {});
+        // Compile while bytes arrive on WASM-aware hosts (including Pages).
+        // Generic-MIME static servers still use the compatible byte-buffer path.
+        result = typeof WebAssembly.instantiateStreaming === 'function' &&
+          /^application\/wasm(?:;|$)/i.test(response.headers.get('content-type') || '')
+          ? await WebAssembly.instantiateStreaming(response, {})
+          : await WebAssembly.instantiate(await response.arrayBuffer(), {});
       }
       wasm = result.instance.exports;
       lastError = null;
@@ -50,17 +56,24 @@ function resultAt(ptr) {
 }
 export function coreCall(op, args = {}) {
   const core = engine();
-  const input = encoder.encode(JSON.stringify({ op, args }));
-  const ptr = core.core_alloc(input.length);
-  try {
-    new Uint8Array(core.memory.buffer, ptr, input.length).set(input);
-    return resultAt(core.core_call(ptr, input.length));
-  } finally { core.core_dealloc(ptr, input.length); }
+  const json = JSON.stringify({ op, args });
+  // UTF-8 requires at most three bytes per UTF-16 code unit. encodeInto writes
+  // directly into reusable WASM memory, avoiding a temporary byte array/copy.
+  const needed = json.length * 3;
+  if (needed > 12_000_000) throw new Error('request too large');
+  if (needed > inputCapacity) {
+    inputCapacity = Math.min(12_000_000, Math.max(1024, needed, inputCapacity * 2));
+    inputPtr = core.core_input_reserve(inputCapacity);
+    if (!inputPtr) throw new Error('could not reserve math engine input');
+  }
+  // Recreate the view after any WASM memory growth; never retain a detached view.
+  const { written } = encoder.encodeInto(json, new Uint8Array(core.memory.buffer, inputPtr, inputCapacity));
+  return resultAt(core.core_call(inputPtr, written));
 }
 export function generateRecipe(skillIndex, rng) {
   const core = engine();
   // A seed-aware stream maintains exact original generator consumption. Generic
-// RNG callbacks are supported by deriving a seed, not by crossing WASM per draw.
+  // RNG callbacks are supported by deriving a seed, not by crossing WASM per draw.
   const seed = typeof rng.getState === 'function' ? rng.getState() : Math.floor(rng() * 4294967296) >>> 0;
   const out = resultAt(core.core_generate(skillIndex, seed));
   if (typeof rng.setState === 'function') rng.setState(out.seed);

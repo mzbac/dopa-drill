@@ -34,3 +34,27 @@ test('14,500 questions retain original seeded answers and intermediate input dig
     assert.equal(createHash('sha256').update(JSON.stringify(samples)).digest('hex'),fixture.skills[skill.id],skill.id);
   }
 });
+
+test('reusable input survives UTF-8, memory growth, failures and later calls', () => {
+  const expected = coreCall('generate',{skill:SKILLS[0].id,seed:2026});
+  for (const length of [1, 1000, 80000, 1, 250000, 20]) {
+    // Include multi-byte and supplementary-plane characters, not only ASCII.
+    assert.deepEqual(coreCall('generate',{skill:SKILLS[0].id,seed:2026,ignored:'雪🌟'.repeat(length)}), expected);
+  }
+  assert.throws(()=>coreCall('notAnOperation雪🌟'), /unknown operation: notAnOperation雪🌟/);
+  assert.throws(()=>coreCall('generate',{ignored:'x'.repeat(4_000_000)}), /request too large/);
+  assert.deepEqual(coreCall('generate',{skill:SKILLS[0].id,seed:2026}), expected);
+});
+
+test('browser loading supports streaming WASM and generic MIME servers', async () => {
+  const bytes=await readFile(new URL('../app/wasm/dopa_core.wasm',import.meta.url));
+  const fetchBefore=globalThis.fetch;
+  try {
+    for(const [index,type] of ['application/wasm','application/octet-stream'].entries()) {
+      globalThis.fetch=async()=>new Response(bytes,{headers:{'Content-Type':type}});
+      const core=await import(`../app/js/math-core.js?loader-test=${index}`);
+      assert.equal((await core.initCore()).ready,true);
+      assert.equal(core.checkDigit(7,7),true);
+    }
+  } finally { globalThis.fetch=fetchBefore; }
+});

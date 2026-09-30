@@ -63,6 +63,9 @@ export const emptyProgress = () => coreCall('emptyProgress');
 export const isMastered = (prog,id) => coreCall('isMastered',{prog:view(prog,['mastered'],[id]),id});
 export const isUnlocked = (prog,id) => coreCall('isUnlocked',{prog:view(prog,['mastered'],SKILL[id].req),id});
 export const stateOf = (prog,id) => coreCall('stateOf',{prog:view(prog,['mastered','n'],[id,...SKILL[id].req]),id});
+// Read all 58 display states in one call. This returns a detached snapshot:
+// callers reuse it only within a synchronous render, never as a persistent cache.
+export const skillViews = (prog) => coreCall('skillViews',{prog:view(prog,['mastered','n','hist','stars'],SKILLS.map(skill=>skill.id))});
 export const masteryRatio = (prog,id) => coreCall('masteryRatio',{prog:view(prog,['mastered','hist'],[id]),id});
 export const rustyOf = (prog,now=Date.now()) => coreCall('rustyOf',{prog:view(prog,['mastered','lastOk','grantedAt','masteredAt']),now});
 export const starsOf = (prog,id) => coreCall('starsOf',{prog:view(prog,['mastered','stars'],[id]),id});
